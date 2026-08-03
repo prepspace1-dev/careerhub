@@ -1,50 +1,110 @@
 import React, { useState } from "react";
-import { Plus, Zap, Trash2, Calendar, Search } from "lucide-react";
+import { Plus, Trash2, Search, ExternalLink } from "lucide-react";
 import { dateKey, niceDate, generateUUID } from "../utils";
 
 const STAGE_COLORS = {
   Applied: "#5D8DC1",
+  "Screening / OA": "#A78BFA",
   "Interview scheduled": "#F2A93B",
   Interviewed: "#38D9C9",
   Offer: "#4ADE80",
-  Rejected: "#7C8B9A",
+  Rejected: "#EF4444",
 };
 
-const STAGES = ["Applied", "Interview scheduled", "Interviewed", "Offer", "Rejected"];
+const STAGES = ["Applied", "Screening / OA", "Interview scheduled", "Interviewed", "Offer", "Rejected"];
 
-export default function InterviewsTab({ active, interviews, onPersistInterview, onDeleteInterview }) {
+const APPLICATION_TYPES = [
+  { id: "Tailored", label: "📝 Tailored Application", bonus: "High Quality" },
+  { id: "Referral", label: "🎯 Referral", bonus: "Highest Priority" },
+  { id: "Outreach", label: "✉️ Recruiter Outreach", bonus: "High Response" },
+  { id: "Cold Apply", label: "⚡ Cold Apply", bonus: "Standard" },
+];
+
+// Helper to encode/decode structured info in notes
+function parseNotes(rawNotes) {
+  if (!rawNotes) return { role: "", url: "", quality: "Tailored", text: "" };
+  try {
+    if (rawNotes.startsWith("{") && rawNotes.endsWith("}")) {
+      const parsed = JSON.parse(rawNotes);
+      return {
+        role: parsed.role || "",
+        url: parsed.url || "",
+        quality: parsed.quality || "Tailored",
+        text: parsed.text || "",
+      };
+    }
+  } catch {
+    // fallback plain text
+  }
+  return { role: "", url: "", quality: "Tailored", text: rawNotes };
+}
+
+function serializeNotes(data) {
+  return JSON.stringify({
+    role: data.role || "",
+    url: data.url || "",
+    quality: data.quality || "Tailored",
+    text: data.text || "",
+  });
+}
+
+export default function InterviewsTab({
+  active,
+  interviews,
+  onPersistInterview,
+  onDeleteInterview,
+}) {
   const [company, setCompany] = useState("");
+  const [role, setRole] = useState("");
+  const [url, setUrl] = useState("");
   const [stage, setStage] = useState("Applied");
-  const [notes, setNotes] = useState("");
+  const [quality, setQuality] = useState("Tailored");
+  const [notesText, setNotesText] = useState("");
 
-  // Search & Filter
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStage, setFilterStage] = useState("All");
   const [viewMode, setViewMode] = useState("board"); // 'board' or 'list'
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const list = interviews || [];
 
-  function addEntry() {
+  function handleAddApplication() {
     if (!company.trim()) return;
+
+    const notesPayload = serializeNotes({
+      role: role.trim() || "SDE Engineer",
+      url: url.trim(),
+      quality,
+      text: notesText.trim(),
+    });
+
     const newEntry = {
       id: generateUUID(),
       company: company.trim(),
       stage,
-      notes: notes.trim(),
-      date: dateKey(new Date())
+      notes: notesPayload,
+      date: dateKey(new Date()),
     };
 
     const nextList = [newEntry, ...list];
     onPersistInterview(newEntry, nextList);
+
+    // Reset form
     setCompany("");
-    setNotes("");
+    setRole("");
+    setUrl("");
+    setNotesText("");
     setStage("Applied");
+    setQuality("Tailored");
+    setShowAddForm(false);
   }
 
   function cycleStage(id) {
     const nextList = list.map((e) => {
       if (e.id === id) {
-        const nextIndex = (STAGES.indexOf(e.stage) + 1) % STAGES.length;
+        // Map current stage to index or fallback
+        const normalizedStage = STAGES.includes(e.stage) ? e.stage : "Applied";
+        const nextIndex = (STAGES.indexOf(normalizedStage) + 1) % STAGES.length;
         return { ...e, stage: STAGES[nextIndex] };
       }
       return e;
@@ -55,524 +115,570 @@ export default function InterviewsTab({ active, interviews, onPersistInterview, 
   }
 
   function deleteEntry(id, e) {
-    e.stopPropagation(); // Avoid triggering cycleStage
+    if (e) e.stopPropagation();
     const nextList = list.filter((item) => item.id !== id);
     onDeleteInterview(id, nextList);
   }
 
-  // Monthly stats
-  const now = new Date();
-  const currentMonthStr = now.toISOString().slice(0, 7); // "YYYY-MM"
-  const callsThisMonth = list.filter(
-    (e) => e.date.startsWith(currentMonthStr) && (e.stage === "Interview scheduled" || e.stage === "Interviewed")
-  ).length;
-  
-  const targetGoal = 2;
-  const goalProgress = Math.min(100, (callsThisMonth / targetGoal) * 100);
+  // ── Metrics Calculation ──────────────────────────────────────────────────
+  const totalApps = list.length;
+  const highQualityApps = list.filter((item) => {
+    const p = parseNotes(item.notes);
+    return p.quality === "Referral" || p.quality === "Tailored" || p.quality === "Outreach";
+  }).length;
 
-  // Filters
+  const qualityRatio = totalApps > 0 ? Math.round((highQualityApps / totalApps) * 100) : 0;
+
+  const interviewsScheduled = list.filter(
+    (e) => e.stage === "Interview scheduled" || e.stage === "Interviewed"
+  ).length;
+
+  const offersCount = list.filter((e) => e.stage === "Offer").length;
+
+  // Filtered List
   const filteredList = list.filter((item) => {
-    const matchesSearch = item.company.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          (item.notes && item.notes.toLowerCase().includes(searchQuery.toLowerCase()));
+    const parsed = parseNotes(item.notes);
+    const matchesSearch =
+      item.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      parsed.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      parsed.text.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStage = filterStage === "All" || item.stage === filterStage;
     return matchesSearch && matchesStage;
   });
 
   return (
     <div style={{ display: active ? "block" : "none" }} className="fade-in">
-      <div style={styles.header}>
+      {/* Page Header */}
+      <div style={s.pageHeader}>
         <div>
-          <div style={styles.eyebrowRow}>
-            <span style={styles.eyebrow}>INTERVIEW TRACKER</span>
-          </div>
-          <h1 style={styles.title}>Companies & calls</h1>
+          <span style={s.eyebrow}>CAREER PIPELINE</span>
+          <h1 style={s.pageTitle}>Job Applications &amp; Interviews</h1>
         </div>
-      </div>
 
-      <div style={styles.goalCard}>
-        <div style={styles.goalBox}>
-          <Zap size={15} color="#F2A93B" />
-          <span style={{ color: "#E7EDF5", fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, fontWeight: 600 }}>
-            {callsThisMonth} interview call{callsThisMonth === 1 ? "" : "s"} this month
-          </span>
-          <span style={{ color: "#5D8DC1", fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, marginLeft: "auto" }}>
-            goal: {targetGoal}
-          </span>
-        </div>
-        <div style={styles.goalTrack}>
-          <div style={{ ...styles.goalFill, width: `${goalProgress}%`, background: goalProgress >= 100 ? "#4ADE80" : "#F2A93B" }} />
-        </div>
-      </div>
-
-      <div style={styles.editorBox}>
-        <div style={styles.inputRow}>
-          <input
-            style={styles.input}
-            placeholder="Company name"
-            value={company}
-            onChange={(e) => setCompany(e.target.value)}
-          />
-          <select
-            style={styles.select}
-            value={stage}
-            onChange={(e) => setStage(e.target.value)}
-          >
-            {STAGES.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-        <textarea
-          style={styles.textarea}
-          rows={2}
-          placeholder="Notes (role, contact, next step)"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-        <button style={styles.saveBtn} onClick={addEntry}>
-          <Plus size={14} /> Add Application
+        <button onClick={() => setShowAddForm(!showAddForm)} style={s.addBtn}>
+          <Plus size={13} /> {showAddForm ? "Cancel" : "Add Application"}
         </button>
       </div>
 
-      <div style={styles.divider} />
-
-      <div style={styles.filterSection}>
-        <div style={styles.searchBarRow}>
-          <div style={styles.searchWrapper}>
-            <Search size={14} style={styles.searchIcon} />
-            <input
-              type="text"
-              placeholder="Search companies..."
-              style={styles.searchInput}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <select
-            style={styles.stageFilterDropdown}
-            value={filterStage}
-            onChange={(e) => setFilterStage(e.target.value)}
-          >
-            <option value="All">All Stages</option>
-            {STAGES.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-          
-          <div style={styles.viewToggleGroup}>
-            <button 
-              style={{
-                ...styles.toggleBtn,
-                background: viewMode === "board" ? "#F2A93B" : "transparent",
-                color: viewMode === "board" ? "#0A0F1C" : "#8493AA"
-              }}
-              onClick={() => setViewMode("board")}
-            >
-              Board
-            </button>
-            <button 
-              style={{
-                ...styles.toggleBtn,
-                background: viewMode === "list" ? "#F2A93B" : "transparent",
-                color: viewMode === "list" ? "#0A0F1C" : "#8493AA"
-              }}
-              onClick={() => setViewMode("list")}
-            >
-              List
-            </button>
-          </div>
+      {/* Metrics Banner */}
+      <div style={s.metricsRow}>
+        <div style={s.metricCard}>
+          <span style={{ ...s.metricVal, color: "#38D9C9" }}>{totalApps}</span>
+          <span style={s.metricLbl}>Total Applications</span>
+        </div>
+        <div style={s.metricCard}>
+          <span style={{ ...s.metricVal, color: "#4ADE80" }}>{qualityRatio}%</span>
+          <span style={s.metricLbl}>High Quality Apps</span>
+        </div>
+        <div style={s.metricCard}>
+          <span style={{ ...s.metricVal, color: "#F2A93B" }}>{interviewsScheduled}</span>
+          <span style={s.metricLbl}>Interviews Active</span>
+        </div>
+        <div style={s.metricCard}>
+          <span style={{ ...s.metricVal, color: "#A78BFA" }}>{offersCount}</span>
+          <span style={s.metricLbl}>Offers Received</span>
         </div>
       </div>
 
-      <div style={styles.sectionLabel}>
-        {viewMode === "list" ? `ALL ENTRIES (${filteredList.length})` : "PIPELINE BOARD"}
-      </div>
+      {/* Add Application Form (Collapsible / Toggleable) */}
+      {showAddForm && (
+        <div style={s.formCard} className="fade-in">
+          <div style={s.formTitle}>Track New Application</div>
 
-      {viewMode === "list" ? (
-        filteredList.length === 0 ? (
-          <div style={styles.emptyState}>
-            {searchQuery || filterStage !== "All"
-              ? "No applications match your filters."
-              : "No companies logged yet — add your first application above."}
+          <div style={s.formGrid}>
+            <input
+              style={s.input}
+              placeholder="Company Name (e.g. Google, Stripe, Razorpay)"
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+            />
+            <input
+              style={s.input}
+              placeholder="Role Title (e.g. SDE 1, Backend Engineer)"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+            />
           </div>
-        ) : (
-          <div style={styles.historyList}>
-            {filteredList.map((e) => (
-              <div
-                key={e.id}
-                onClick={() => cycleStage(e.id)}
-                style={styles.historyItem}
+
+          <div style={s.formGrid}>
+            <input
+              style={s.input}
+              placeholder="Job Posting URL / Link (e.g. https://...)"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
+            <select
+              style={s.select}
+              value={stage}
+              onChange={(e) => setStage(e.target.value)}
+            >
+              {STAGES.map((stg) => (
+                <option key={stg} value={stg}>
+                  {stg}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Application Quality Type */}
+          <div style={s.qualityRow}>
+            <span style={s.qualityLabel}>Application Type:</span>
+            {APPLICATION_TYPES.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setQuality(t.id)}
+                style={{
+                  ...s.qualityBtn,
+                  background: quality === t.id ? "rgba(56,217,201,0.15)" : "transparent",
+                  color: quality === t.id ? "#38D9C9" : "#8493AA",
+                  borderColor: quality === t.id ? "#38D9C9" : "#1C2842",
+                }}
               >
-                <div style={styles.itemHeader}>
-                  <span style={styles.companyName}>{e.company}</span>
-                  <div style={styles.badgeRow}>
-                    <span style={{ ...styles.todayTagSmall, background: STAGE_COLORS[e.stage] }}>
-                      {e.stage}
-                    </span>
-                    <button 
-                      onClick={(evt) => deleteEntry(e.id, evt)} 
-                      style={styles.deleteBtn}
-                      title="Delete Entry"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                </div>
-                {e.notes && <div style={styles.historyText}>{e.notes}</div>}
-                <div style={styles.itemFooter}>
-                  <Calendar size={10} style={{ marginRight: 4 }} />
-                  <span>{niceDate(e.date)} · Tap card to update stage</span>
-                </div>
-              </div>
+                {t.label}
+              </button>
             ))}
           </div>
-        )
-      ) : (
-        /* Kanban Board View */
-        <div className="kanban-board">
+
+          <textarea
+            style={s.textarea}
+            rows={2}
+            placeholder="Notes & Outcomes (e.g. Asked LC 215, referred by Alex, HR recruiter screen scheduled)"
+            value={notesText}
+            onChange={(e) => setNotesText(e.target.value)}
+          />
+
+          <div style={s.formActions}>
+            <button onClick={handleAddApplication} style={s.saveBtn}>
+              <Plus size={13} /> Save Application
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Filter and View Switcher */}
+      <div style={s.filterRow}>
+        <div style={s.searchBox}>
+          <Search size={14} color="#5D8DC1" />
+          <input
+            style={s.searchInput}
+            placeholder="Search company, role, or notes..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+
+        <select
+          style={s.stageSelect}
+          value={filterStage}
+          onChange={(e) => setFilterStage(e.target.value)}
+        >
+          <option value="All">All Pipeline Stages</option>
+          {STAGES.map((stg) => (
+            <option key={stg} value={stg}>
+              {stg}
+            </option>
+          ))}
+        </select>
+
+        {/* Board / List view switcher */}
+        <div style={s.viewSwitch}>
+          <button
+            onClick={() => setViewMode("board")}
+            style={{
+              ...s.switchBtn,
+              background: viewMode === "board" ? "#38D9C9" : "transparent",
+              color: viewMode === "board" ? "#0A0F1C" : "#8493AA",
+            }}
+          >
+            Pipeline Board
+          </button>
+          <button
+            onClick={() => setViewMode("list")}
+            style={{
+              ...s.switchBtn,
+              background: viewMode === "list" ? "#38D9C9" : "transparent",
+              color: viewMode === "list" ? "#0A0F1C" : "#8493AA",
+            }}
+          >
+            Ledger View
+          </button>
+        </div>
+      </div>
+
+      {/* ── KANBAN BOARD VIEW ────────────────────────────────────────────────── */}
+      {viewMode === "board" ? (
+        <div className="kanban-board" style={s.boardGrid}>
           {STAGES.map((colStage) => {
             const colEntries = filteredList.filter((item) => item.stage === colStage);
+            const colColor = STAGE_COLORS[colStage] || "#5D8DC1";
+
             return (
-              <div className="kanban-column" key={colStage}>
-                <div className="kanban-column-header">
-                  <span className="kanban-column-title" style={{ color: STAGE_COLORS[colStage] }}>
-                    {colStage}
-                  </span>
-                  <span className="kanban-column-badge">{colEntries.length}</span>
+              <div key={colStage} style={s.boardCol}>
+                <div style={s.boardColHeader}>
+                  <span style={{ ...s.colTitle, color: colColor }}>{colStage}</span>
+                  <span style={s.colCount}>{colEntries.length}</span>
                 </div>
-                <div className="kanban-cards-container">
-                  {colEntries.length > 0 ? (
-                    colEntries.map((e) => (
-                      <div 
-                        className="kanban-card" 
-                        key={e.id}
-                        onClick={() => cycleStage(e.id)}
-                        title="Click card to advance pipeline stage"
-                      >
-                        <div className="kanban-card-company">{e.company}</div>
-                        {e.notes && <div className="kanban-card-notes">{e.notes}</div>}
-                        <div className="kanban-card-footer">
-                          <span className="kanban-card-date">{niceDate(e.date)}</span>
-                          <div className="kanban-card-actions">
-                            <button 
-                              className="kanban-action-btn delete"
-                              onClick={(evt) => deleteEntry(e.id, evt)}
-                              title="Delete Application"
+
+                <div style={s.cardStack}>
+                  {colEntries.length === 0 ? (
+                    <div style={s.emptyCol}>Empty stage</div>
+                  ) : (
+                    colEntries.map((item) => {
+                      const p = parseNotes(item.notes);
+                      const typeLabel =
+                        APPLICATION_TYPES.find((t) => t.id === p.quality)?.label || p.quality;
+
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => cycleStage(item.id)}
+                          style={s.pipelineCard}
+                          title="Click card to advance pipeline stage"
+                        >
+                          <div style={s.cardHeader}>
+                            <span style={s.cardCompany}>{item.company}</span>
+                            <button
+                              onClick={(e) => deleteEntry(item.id, e)}
+                              style={s.delBtn}
+                              title="Delete application"
                             >
-                              <Trash2 size={11} />
+                              <Trash2 size={12} />
                             </button>
                           </div>
+
+                          {p.role && <div style={s.cardRole}>{p.role}</div>}
+
+                          {p.url && (
+                            <a
+                              href={p.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              style={s.cardUrl}
+                            >
+                              <ExternalLink size={10} style={{ marginRight: 3 }} /> View Job Link
+                            </a>
+                          )}
+
+                          {p.text && <div style={s.cardText}>{p.text}</div>}
+
+                          <div style={s.cardFooter}>
+                            <span style={s.typeTag}>{typeLabel}</span>
+                            <span style={s.cardDate}>{niceDate(item.date)}</span>
+                          </div>
                         </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div style={styles.emptyStateColumn}>Empty</div>
+                      );
+                    })
                   )}
                 </div>
               </div>
             );
           })}
         </div>
+      ) : (
+        /* ── TABLE / LEDGER VIEW ───────────────────────────────────────────── */
+        <div style={s.tableCard}>
+          {filteredList.length === 0 ? (
+            <div style={s.emptyState}>No applications match your criteria.</div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={s.table}>
+                <thead>
+                  <tr>
+                    <th style={s.th}>Company &amp; Role</th>
+                    <th style={s.th}>Link</th>
+                    <th style={s.th}>Type</th>
+                    <th style={s.th}>Stage</th>
+                    <th style={s.th}>Notes &amp; Outcome</th>
+                    <th style={s.th}>Applied Date</th>
+                    <th style={s.th}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredList.map((item) => {
+                    const p = parseNotes(item.notes);
+                    const colColor = STAGE_COLORS[item.stage] || "#5D8DC1";
+                    const typeLabel =
+                      APPLICATION_TYPES.find((t) => t.id === p.quality)?.label || p.quality;
+
+                    return (
+                      <tr key={item.id} style={s.tr}>
+                        <td style={s.tdCompany}>
+                          <div style={s.compTitle}>{item.company}</div>
+                          <div style={s.compRole}>{p.role || "Software Engineer"}</div>
+                        </td>
+
+                        <td style={s.td}>
+                          {p.url ? (
+                            <a
+                              href={p.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={s.linkBtn}
+                            >
+                              Link <ExternalLink size={10} />
+                            </a>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+
+                        <td style={s.td}>
+                          <span style={s.typeChip}>{typeLabel}</span>
+                        </td>
+
+                        <td style={s.td}>
+                          <button
+                            onClick={() => cycleStage(item.id)}
+                            style={{
+                              ...s.stagePill,
+                              background: `${colColor}18`,
+                              color: colColor,
+                              borderColor: `${colColor}44`,
+                            }}
+                            title="Click to cycle stage"
+                          >
+                            {item.stage} ↺
+                          </button>
+                        </td>
+
+                        <td style={s.tdNotes}>
+                          {p.text ? p.text : <span style={{ color: "#3A4560" }}>—</span>}
+                        </td>
+
+                        <td style={s.tdDate}>{niceDate(item.date)}</td>
+
+                        <td style={s.tdActions}>
+                          <button
+                            onClick={(e) => deleteEntry(item.id, e)}
+                            style={s.delBtn}
+                            title="Delete entry"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-const styles = {
-  loading: {
-    minHeight: 200,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#8493AA",
-    fontFamily: "'IBM Plex Mono', monospace"
-  },
-  header: {
-    marginBottom: 10
-  },
-  eyebrowRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 6
+const s = {
+  pageHeader: {
+    display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+    marginBottom: 16, flexWrap: "wrap", gap: 12,
   },
   eyebrow: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
-    letterSpacing: 2,
-    color: "#5D8DC1"
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, letterSpacing: 2,
+    color: "#38D9C9", display: "block", marginBottom: 4, fontWeight: 600,
   },
-  syncIndicator: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 9,
-    color: "#38D9C9",
-    background: "rgba(56, 217, 201, 0.1)",
-    padding: "2px 6px",
-    borderRadius: 4
+  pageTitle: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 22, fontWeight: 700,
+    color: "#E7EDF5", margin: 0,
   },
-  title: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 19,
-    fontWeight: 600,
-    color: "#E7EDF5",
-    margin: "0 0 6px"
+  addBtn: {
+    display: "flex", alignItems: "center", gap: 6,
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, fontWeight: 700,
+    background: "linear-gradient(135deg, #38D9C9 0%, #5D8DC1 100%)",
+    color: "#0A0F1C", padding: "9px 16px", borderRadius: 10,
+    boxShadow: "0 2px 14px rgba(56,217,201,0.25)", cursor: "pointer", border: "none",
   },
-  goalCard: {
-    background: "#0E1626",
-    border: "1px solid #2A3448",
-    borderRadius: 14,
-    padding: "14px 16px",
-    marginBottom: 16,
-    display: "flex",
-    flexDirection: "column",
-    gap: 8
+  metricsRow: {
+    display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18,
   },
-  goalBox: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8
+  metricCard: {
+    background: "rgba(14,22,38,0.6)", border: "1px solid #1C2842",
+    borderRadius: 14, padding: "12px 18px", display: "flex",
+    flexDirection: "column", gap: 4, alignItems: "center", minWidth: 110, flex: 1,
   },
-  goalTrack: {
-    height: 4,
-    background: "#121A2B",
-    borderRadius: 2,
-    overflow: "hidden"
+  metricVal: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 20, fontWeight: 700,
   },
-  goalFill: {
-    height: "100%",
-    transition: "width 0.3s ease"
+  metricLbl: {
+    fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 10.5, color: "#8493AA",
+    textAlign: "center",
   },
-  editorBox: {
-    background: "#0E1626",
-    border: "1px solid #1C2842",
-    borderRadius: 14,
-    padding: "16px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 10
+  formCard: {
+    background: "rgba(14,22,38,0.65)", border: "1px solid #1C2842",
+    borderRadius: 16, padding: "18px 20px", marginBottom: 20,
+    display: "flex", flexDirection: "column", gap: 12,
   },
-  inputRow: {
-    display: "flex",
-    gap: 10
+  formTitle: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, fontWeight: 700,
+    color: "#E7EDF5", marginBottom: 4,
   },
+  formGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
   input: {
-    flex: 2,
-    background: "#121A2B",
-    border: "1px solid #1C2842",
-    borderRadius: 10,
-    color: "#E7EDF5",
-    fontFamily: "'IBM Plex Sans', sans-serif",
-    fontSize: 13.5,
-    padding: "10px 12px",
-    outline: "none",
-    transition: "border-color 0.2s ease",
-    ":focus": {
-      borderColor: "#38D9C9"
-    }
+    background: "#0E1626", border: "1px solid #1C2842", borderRadius: 10,
+    color: "#E7EDF5", fontSize: 13, fontFamily: "'IBM Plex Sans', sans-serif",
+    padding: "9px 12px", outline: "none", width: "100%",
   },
   select: {
-    flex: 1,
-    background: "#121A2B",
-    border: "1px solid #1C2842",
-    borderRadius: 10,
-    color: "#E7EDF5",
-    fontFamily: "'IBM Plex Sans', sans-serif",
-    fontSize: 13.5,
-    padding: "10px 12px",
-    outline: "none"
+    background: "#0E1626", border: "1px solid #1C2842", borderRadius: 10,
+    color: "#E7EDF5", fontSize: 13, fontFamily: "'IBM Plex Mono', monospace",
+    padding: "9px 12px", outline: "none", width: "100%", cursor: "pointer",
+  },
+  qualityRow: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  qualityLabel: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: "#5D8DC1",
+  },
+  qualityBtn: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5,
+    padding: "4px 10px", borderRadius: 14, border: "1px solid",
+    cursor: "pointer", transition: "all 0.15s ease",
   },
   textarea: {
-    width: "100%",
-    background: "#121A2B",
-    border: "1px solid #1C2842",
-    borderRadius: 10,
-    color: "#E7EDF5",
-    fontFamily: "'IBM Plex Sans', sans-serif",
-    fontSize: 13.5,
-    lineHeight: 1.5,
-    padding: "10px 12px",
-    resize: "vertical",
-    outline: "none",
-    transition: "border-color 0.2s ease",
-    ":focus": {
-      borderColor: "#38D9C9"
-    }
+    background: "#0E1626", border: "1px solid #1C2842", borderRadius: 10,
+    color: "#E7EDF5", fontSize: 13, fontFamily: "'IBM Plex Sans', sans-serif",
+    padding: "10px 12px", outline: "none", resize: "vertical", width: "100%",
   },
+  formActions: { display: "flex", justifyContent: "flex-end" },
   saveBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    background: "#F2A93B",
-    color: "#0A0F1C",
-    border: "none",
-    borderRadius: 8,
-    padding: "10px 16px",
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontWeight: 700,
-    fontSize: 12,
-    cursor: "pointer",
-    boxShadow: "0 4px 12px rgba(242, 169, 59, 0.15)"
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, fontWeight: 700,
+    background: "#38D9C9", color: "#0A0F1C", padding: "8px 16px",
+    borderRadius: 8, cursor: "pointer", border: "none",
   },
-  divider: {
-    height: 1,
-    background: "#1C2842",
-    margin: "18px 0 14px"
+  filterRow: {
+    display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
+    marginBottom: 18, background: "rgba(18,26,43,0.4)", padding: "10px 14px",
+    borderRadius: 14, border: "1px solid #1C2842",
   },
-  filterSection: {
-    marginBottom: 14
-  },
-  searchBarRow: {
-    display: "flex",
-    gap: 8,
-    alignItems: "center"
-  },
-  searchWrapper: {
-    position: "relative",
-    flex: 1
-  },
-  searchIcon: {
-    position: "absolute",
-    left: 10,
-    top: "50%",
-    transform: "translateY(-50%)",
-    color: "#5D8DC1"
+  searchBox: {
+    display: "flex", alignItems: "center", gap: 8, background: "#0E1626",
+    border: "1px solid #1C2842", borderRadius: 10, padding: "6px 12px", flex: 1,
+    minWidth: 200,
   },
   searchInput: {
+    background: "transparent", border: "none", color: "#E7EDF5",
+    fontSize: 12.5, fontFamily: "'IBM Plex Sans', sans-serif", outline: "none",
     width: "100%",
-    background: "#0E1626",
-    border: "1px solid #1C2842",
-    borderRadius: 8,
-    color: "#E7EDF5",
-    fontSize: 13,
-    padding: "8px 10px 8px 32px",
-    outline: "none",
-    fontFamily: "'IBM Plex Sans', sans-serif"
   },
-  stageFilterDropdown: {
-    background: "#0E1626",
-    border: "1px solid #1C2842",
-    borderRadius: 8,
-    color: "#E7EDF5",
-    fontSize: 13,
-    padding: "8px 10px",
-    outline: "none",
-    fontFamily: "'IBM Plex Sans', sans-serif"
+  stageSelect: {
+    background: "#0E1626", border: "1px solid #1C2842", borderRadius: 10,
+    color: "#5D8DC1", fontSize: 11.5, fontFamily: "'IBM Plex Mono', monospace",
+    padding: "7px 12px", outline: "none", cursor: "pointer",
   },
-  sectionLabel: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 10.5,
-    letterSpacing: 1.5,
-    color: "#5D8DC1",
-    marginBottom: 10
+  viewSwitch: {
+    display: "flex", background: "#0E1626", border: "1px solid #1C2842",
+    borderRadius: 10, padding: 2,
+  },
+  switchBtn: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, fontWeight: 600,
+    padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+    transition: "all 0.15s ease",
+  },
+  boardGrid: {
+    display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 14, alignItems: "flex-start",
+  },
+  boardCol: {
+    background: "rgba(14,22,38,0.55)", border: "1px solid #1C2842",
+    borderRadius: 14, padding: "12px", display: "flex", flexDirection: "column", gap: 10,
+  },
+  boardColHeader: {
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+    paddingBottom: 8, borderBottom: "1px solid #121A2B",
+  },
+  colTitle: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, fontWeight: 700,
+  },
+  colCount: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: "#8493AA",
+    background: "#121A2B", padding: "2px 7px", borderRadius: 10,
+  },
+  cardStack: { display: "flex", flexDirection: "column", gap: 10 },
+  emptyCol: {
+    fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11, color: "#3A4560",
+    fontStyle: "italic", textAlign: "center", padding: "16px 0",
+  },
+  pipelineCard: {
+    background: "#0E1626", border: "1px solid #1C2842", borderRadius: 12,
+    padding: "12px", display: "flex", flexDirection: "column", gap: 6,
+    cursor: "pointer", transition: "border-color 0.15s ease",
+  },
+  cardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  cardCompany: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, fontWeight: 700, color: "#E7EDF5",
+  },
+  delBtn: {
+    background: "none", border: "none", color: "#3A4560", cursor: "pointer", padding: 2,
+  },
+  cardRole: {
+    fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, fontWeight: 500, color: "#38D9C9",
+  },
+  cardUrl: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: "#5D8DC1",
+    textDecoration: "none", display: "inline-flex", alignItems: "center",
+  },
+  cardText: {
+    fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11.5, color: "#8493AA",
+    lineHeight: 1.35,
+  },
+  cardFooter: {
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+    paddingTop: 6, borderTop: "1px solid #121A2B", marginTop: 4,
+  },
+  typeTag: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, color: "#A78BFA",
+  },
+  cardDate: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, color: "#5D8DC1",
+  },
+  tableCard: {
+    background: "rgba(14,22,38,0.55)", border: "1px solid #1C2842",
+    borderRadius: 16, overflow: "hidden",
   },
   emptyState: {
-    fontFamily: "'IBM Plex Sans', sans-serif",
-    fontSize: 12.5,
-    color: "#5D8DC1",
-    fontStyle: "italic",
-    textAlign: "center",
-    padding: "16px 0"
+    fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: "#5D8DC1",
+    fontStyle: "italic", padding: "36px 20px", textAlign: "center",
   },
-  historyList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 10
+  table: { width: "100%", borderCollapse: "collapse" },
+  th: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, letterSpacing: 1.2,
+    color: "#5D8DC1", padding: "10px 14px", borderBottom: "1px solid #1C2842",
+    textAlign: "left", textTransform: "uppercase", fontWeight: 600,
+    background: "rgba(18,26,43,0.4)",
   },
-  historyItem: {
-    textAlign: "left",
-    background: "#0E1626",
-    border: "1px solid #1C2842",
-    borderRadius: 10,
-    padding: "12px 14px",
-    cursor: "pointer",
-    transition: "all 0.15s ease",
-    ":hover": {
-      borderColor: "#38D9C9"
-    }
+  tr: { borderBottom: "1px solid #0D1526" },
+  tdCompany: {
+    fontFamily: "'IBM Plex Sans', sans-serif", padding: "12px 14px", verticalAlign: "middle",
   },
-  itemHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6
+  compTitle: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 13.5, fontWeight: 700, color: "#E7EDF5",
   },
-  companyName: {
-    fontFamily: "'IBM Plex Sans', sans-serif",
-    fontSize: 14.5,
-    fontWeight: 600,
-    color: "#E7EDF5"
+  compRole: {
+    fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: "#38D9C9", marginTop: 2,
   },
-  badgeRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8
+  td: {
+    fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, padding: "12px 14px",
+    color: "#8493AA", verticalAlign: "middle",
   },
-  todayTagSmall: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 8.5,
-    color: "#0A0F1C",
-    borderRadius: 4,
-    padding: "2px 6px",
-    fontWeight: 600
+  tdNotes: {
+    fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, padding: "12px 14px",
+    color: "#8493AA", verticalAlign: "middle", maxWidth: 220,
   },
-  deleteBtn: {
-    color: "#8493AA",
-    padding: "2px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 4,
-    ":hover": {
-      color: "#EF4444",
-      background: "rgba(239, 68, 68, 0.1)"
-    }
+  tdDate: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, color: "#5D8DC1",
+    padding: "12px 14px", verticalAlign: "middle", whiteSpace: "nowrap",
   },
-  historyText: {
-    fontFamily: "'IBM Plex Sans', sans-serif",
-    fontSize: 13,
-    color: "#C7D2E0",
-    lineHeight: 1.5,
-    whiteSpace: "pre-wrap",
-    background: "#121A2B",
-    padding: "8px 10px",
-    borderRadius: 6,
-    margin: "6px 0"
+  tdActions: { padding: "12px 14px", textAlign: "right", verticalAlign: "middle" },
+  linkBtn: {
+    color: "#38D9C9", textDecoration: "none", fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 10.5, display: "inline-flex", alignItems: "center", gap: 3,
   },
-  itemFooter: {
-    display: "flex",
-    alignItems: "center",
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 9.5,
-    color: "#5D8DC1",
-    marginTop: 4
+  typeChip: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: "#A78BFA",
+    background: "rgba(167,139,250,0.1)", padding: "2px 8px", borderRadius: 8,
   },
-  viewToggleGroup: {
-    display: "flex",
-    background: "#121A2B",
-    border: "1px solid #1C2842",
-    borderRadius: 8,
-    padding: "2px",
-    gap: 2
+  stagePill: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, fontWeight: 600,
+    padding: "3px 10px", borderRadius: 12, border: "1px solid", cursor: "pointer",
   },
-  toggleBtn: {
-    fontSize: 10,
-    fontWeight: 600,
-    fontFamily: "'IBM Plex Mono', monospace",
-    padding: "3px 8px",
-    borderRadius: 6,
-    border: "none",
-    cursor: "pointer",
-    transition: "all 0.15s ease"
-  },
-  emptyStateColumn: {
-    fontFamily: "'IBM Plex Sans', sans-serif",
-    fontSize: 11,
-    color: "#5D8DC1",
-    fontStyle: "italic",
-    textAlign: "center",
-    padding: "24px 0",
-    border: "1px dashed #1C2842",
-    borderRadius: 8
-  }
 };
