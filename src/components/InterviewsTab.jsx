@@ -83,7 +83,6 @@ export default function InterviewsTab({ active, interviews, onPersistInterview, 
         <div>
           <div style={styles.eyebrowRow}>
             <span style={styles.eyebrow}>INTERVIEW TRACKER</span>
-            {syncing && <span style={styles.syncIndicator}>Syncing</span>}
           </div>
           <h1 style={styles.title}>Companies & calls</h1>
         </div>
