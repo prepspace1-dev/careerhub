@@ -104,7 +104,6 @@ export default function SkillsTab({ active, skills, onPersistSkill }) {
         <div>
           <div style={styles.eyebrowRow}>
             <span style={styles.eyebrow}>SKILL MAP</span>
-            {syncing && <span style={styles.syncIndicator}>Syncing</span>}
           </div>
           <h1 style={styles.title}>Where you stand</h1>
         </div>
