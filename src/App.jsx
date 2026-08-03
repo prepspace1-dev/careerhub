@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { ListChecks, BookOpen, NotebookPen, Briefcase, LogOut, Cloud, CloudOff, User, RefreshCw } from "lucide-react";
+import { LayoutDashboard, ListChecks, BookOpen, NotebookPen, Briefcase, LogOut, Cloud, CloudOff, User, RefreshCw, Award } from "lucide-react";
+import OverviewTab from "./components/OverviewTab";
 import TasksTab from "./components/TasksTab";
 import SkillsTab from "./components/SkillsTab";
 import LogTab from "./components/LogTab";
@@ -20,6 +21,7 @@ import {
 import { DEFAULT_SKILLS } from "./utils";
 
 const TABS = [
+  { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "tasks", label: "Tasks", icon: ListChecks },
   { id: "skills", label: "Skills", icon: BookOpen },
   { id: "log", label: "Log", icon: NotebookPen },
@@ -27,7 +29,7 @@ const TABS = [
 ];
 
 export default function App() {
-  const [tab, setTab] = useState("tasks");
+  const [tab, setTab] = useState("overview");
   const [user, setUser] = useState(null);
   const [useLocalMode, setUseLocalMode] = useState(false);
   const [authInitialized, setAuthInitialized] = useState(false);
@@ -46,13 +48,13 @@ export default function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const currentHash = window.location.hash.replace("#", "");
-      const validTabs = ["tasks", "skills", "log", "interviews"];
+      const validTabs = ["overview", "tasks", "skills", "log", "interviews"];
       if (validTabs.includes(currentHash)) {
         setTab(currentHash);
       } else {
         // Fallback default
-        setTab("tasks");
-        window.location.hash = "#tasks";
+        setTab("overview");
+        window.location.hash = "#overview";
       }
     };
 
@@ -230,94 +232,112 @@ export default function App() {
   const showAuth = !user && (!useLocalMode || !hasSupabase) && hasSupabase;
 
   return (
-    <div className="app-container">
-      <div className="card fade-in">
-        {showAuth ? (
+    <div className={`app-container ${showAuth ? "auth-mode" : ""}`}>
+      {showAuth ? (
+        <div className="card fade-in">
           <Auth 
             onAuthSuccess={(sessionUser) => setUser(sessionUser)} 
             onSkipAuth={() => setUseLocalMode(true)} 
           />
-        ) : (
-          <>
-            {/* Top Sync & Profile Bar */}
-            <div style={appStyles.statusHeader}>
+        </div>
+      ) : (
+        <div className="dashboard-shell fade-in">
+          {/* Left Sidebar Shell */}
+          <div className="sidebar">
+            <div className="brand-container">
+              <Award size={18} color="var(--teal)" />
+              <span className="brand-title">Career Hub</span>
+            </div>
+
+            {/* Sync Status Header */}
+            <div style={appStyles.statusHeaderCompact}>
               <div style={appStyles.statusRow}>
                 {user ? (
                   <>
-                    <Cloud size={13} color="#4ADE80" />
+                    <Cloud size={12} color="#4ADE80" />
                     <span style={{ ...appStyles.statusText, color: "#4ADE80" }}>
                       {syncing ? "Syncing..." : "Cloud Sync Active"}
                     </span>
-                    {syncing && <RefreshCw size={10} style={{ animation: "spin 1s linear infinite", color: "#38D9C9" }} />}
+                    {syncing && <RefreshCw size={9} style={{ animation: "spin 1s linear infinite", color: "#38D9C9" }} />}
                   </>
                 ) : (
                   <>
-                    <CloudOff size={13} color="#F2A93B" />
+                    <CloudOff size={12} color="#F2A93B" />
                     <span style={{ ...appStyles.statusText, color: "#F2A93B" }}>
-                      {syncing ? "Saving..." : "Local Storage Mode"}
+                      {syncing ? "Saving..." : "Offline Mode"}
                     </span>
-                    {syncing && <RefreshCw size={10} style={{ animation: "spin 1s linear infinite", color: "#F2A93B" }} />}
+                    {syncing && <RefreshCw size={9} style={{ animation: "spin 1s linear infinite", color: "#F2A93B" }} />}
                   </>
-                )}
-              </div>
-              
-              <div style={appStyles.userRow}>
-                {user ? (
-                  <>
-                    <div style={appStyles.userInfo} title={user.email}>
-                      <User size={11} color="#8493AA" />
-                      <span style={appStyles.userEmail}>{user.email}</span>
-                    </div>
-                    <button 
-                      onClick={handleLogout} 
-                      style={appStyles.logoutBtn} 
-                      title="Log Out"
-                    >
-                      <LogOut size={13} />
-                    </button>
-                  </>
-                ) : (
-                  hasSupabase && (
-                    <button 
-                      onClick={() => setUseLocalMode(false)} 
-                      style={appStyles.loginBtn}
-                    >
-                      Connect Account
-                    </button>
-                  )
                 )}
               </div>
             </div>
 
-            {/* Tab Bar Navigation */}
-            <div style={appStyles.tabBar}>
+            {/* Sidebar Navigation */}
+            <div className="nav-list">
               {TABS.map((t) => {
                 const Icon = t.icon;
                 const isActive = tab === t.id;
                 return (
                   <button
                     key={t.id}
-                    className="tab-btn"
+                    className={`nav-btn ${isActive ? "active" : ""}`}
                     onClick={() => handleTabChange(t.id)}
-                    style={{
-                      ...appStyles.tabBtn,
-                      background: isActive ? "#F2A93B" : "#0E1626",
-                      color: isActive ? "#0A0F1C" : "#8493AA",
-                      borderColor: isActive ? "#F2A93B" : "#1C2842",
-                    }}
                   >
-                    <Icon size={13} />
-                    {t.label}
+                    <Icon size={14} />
+                    <span>{t.label}</span>
                   </button>
                 );
               })}
             </div>
 
-            {/* Tab Panels with Pre-Loaded Props */}
+            {/* User Profile & Logout footer */}
+            <div style={appStyles.sidebarFooter}>
+              {user ? (
+                <div style={appStyles.userBox}>
+                  <div style={appStyles.userAvatar}>
+                    <User size={12} color="#8493AA" />
+                  </div>
+                  <div style={appStyles.userMeta}>
+                    <span style={appStyles.userEmailText} title={user.email}>
+                      {user.email}
+                    </span>
+                  </div>
+                  <button 
+                    onClick={handleLogout} 
+                    style={appStyles.logoutBtn} 
+                    title="Log Out"
+                  >
+                    <LogOut size={13} />
+                  </button>
+                </div>
+              ) : (
+                hasSupabase && (
+                  <button 
+                    onClick={() => setUseLocalMode(false)} 
+                    style={appStyles.loginBtnSidebar}
+                  >
+                    Connect Account
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+
+          {/* Main Dashboard Layout Work Area */}
+          <div className="main-content">
+            {tab === "overview" && (
+              <OverviewTab 
+                active={true}
+                tasksHistory={tasks}
+                skills={skills}
+                interviews={interviews}
+                logs={logs}
+                onNavigateToTab={handleTabChange}
+              />
+            )}
             {tab === "tasks" && (
               <TasksTab 
                 active={true} 
-                userId={user?.id}
                 tasksHistory={tasks}
                 onPersistTasks={persistTasks}
               />
@@ -325,7 +345,6 @@ export default function App() {
             {tab === "skills" && (
               <SkillsTab 
                 active={true} 
-                userId={user?.id}
                 skills={skills}
                 onPersistSkill={persistSkill}
               />
@@ -333,7 +352,6 @@ export default function App() {
             {tab === "log" && (
               <LogTab 
                 active={true} 
-                userId={user?.id}
                 logs={logs}
                 tasksHistory={tasks}
                 onPersistLog={persistLog}
@@ -342,15 +360,14 @@ export default function App() {
             {tab === "interviews" && (
               <InterviewsTab 
                 active={true} 
-                userId={user?.id}
                 interviews={interviews}
                 onPersistInterview={persistInterview}
                 onDeleteInterview={deleteInterview}
               />
             )}
-          </>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -378,17 +395,13 @@ const appStyles = {
     fontSize: 12,
     color: "#8493AA"
   },
-  statusHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
+  statusHeaderCompact: {
     background: "rgba(18, 26, 43, 0.4)",
     border: "1px solid #1C2842",
-    borderRadius: 14,
-    padding: "6px 12px",
-    gap: 8,
-    flexWrap: "wrap"
+    borderRadius: 10,
+    padding: "6px 10px",
+    display: "flex",
+    justifyContent: "center"
   },
   statusRow: {
     display: "flex",
@@ -397,69 +410,69 @@ const appStyles = {
   },
   statusText: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 9.5,
+    fontSize: 9,
     fontWeight: 600
   },
-  userRow: {
+  sidebarFooter: {
+    marginTop: "auto",
+    paddingTop: 16,
+    borderTop: "1px solid var(--border)"
+  },
+  userBox: {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    marginLeft: "auto"
+    width: "100%"
   },
-  userInfo: {
+  userAvatar: {
+    width: 22,
+    height: 22,
+    borderRadius: "50%",
+    background: "#121A2B",
+    border: "1px solid #1C2842",
     display: "flex",
     alignItems: "center",
-    gap: 4,
-    maxWidth: "140px",
+    justifyContent: "center"
+  },
+  userMeta: {
+    display: "flex",
+    flexDirection: "column",
+    flexGrow: 1,
     overflow: "hidden"
   },
-  userEmail: {
+  userEmailText: {
     fontFamily: "'IBM Plex Mono', monospace",
     fontSize: 9.5,
     color: "#8493AA",
     whiteSpace: "nowrap",
     textOverflow: "ellipsis",
-    overflow: "hidden"
+    overflow: "hidden",
+    textAlign: "left"
   },
   logoutBtn: {
     color: "#8493AA",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: "4px",
+    padding: "6px",
     borderRadius: 6,
+    cursor: "pointer",
+    background: "none",
     ":hover": {
       color: "#EF4444",
       background: "rgba(239, 68, 68, 0.1)"
     }
   },
-  loginBtn: {
+  loginBtnSidebar: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 9,
+    fontSize: 9.5,
     fontWeight: 600,
     background: "#38D9C9",
     color: "#0A0F1C",
-    padding: "3px 8px",
-    borderRadius: 6,
+    padding: "6px 12px",
+    borderRadius: 8,
+    width: "100%",
+    cursor: "pointer",
     boxShadow: "0 2px 6px rgba(56, 217, 201, 0.15)"
-  },
-  tabBar: {
-    display: "flex",
-    gap: 6,
-    marginBottom: 24,
-    overflowX: "auto",
-    paddingBottom: 2
-  },
-  tabBtn: {
-    display: "flex",
-    alignItems: "center",
-    gap: 5,
-    border: "1px solid",
-    borderRadius: 20,
-    padding: "8px 14px",
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
-    fontWeight: 600,
-    whiteSpace: "nowrap"
   }
 };

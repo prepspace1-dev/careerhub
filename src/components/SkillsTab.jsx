@@ -107,9 +107,36 @@ export default function SkillsTab({ active, skills, onPersistSkill }) {
           </div>
           <h1 style={styles.title}>Where you stand</h1>
         </div>
-        <div style={styles.percentBox}>
-          <span style={styles.percentNum}>{progressPercent}%</span>
-          <span style={styles.percentLabel}>mastery</span>
+        <div style={styles.progressRingWrapper}>
+          <svg width="60" height="60" viewBox="0 0 60 60" style={styles.svgRing}>
+            {/* Background track */}
+            <circle
+              cx="30"
+              cy="30"
+              r="24"
+              stroke="#1C2842"
+              strokeWidth="4.5"
+              fill="transparent"
+            />
+            {/* Foreground animated ring */}
+            <circle
+              cx="30"
+              cy="30"
+              r="24"
+              stroke="#38D9C9"
+              strokeWidth="4.5"
+              fill="transparent"
+              strokeDasharray={2 * Math.PI * 24}
+              strokeDashoffset={2 * Math.PI * 24 * (1 - progressPercent / 100)}
+              strokeLinecap="round"
+              transform="rotate(-90 30 30)"
+              style={{ transition: "stroke-dashoffset 0.4s ease" }}
+            />
+          </svg>
+          <div style={styles.ringTextContainer}>
+            <span style={styles.ringPercentText}>{progressPercent}%</span>
+            <span style={styles.ringLabelText}>mastery</span>
+          </div>
         </div>
       </div>
       
@@ -375,5 +402,39 @@ const styles = {
     height: 8,
     borderRadius: "50%",
     border: "1.5px solid"
+  },
+  progressRingWrapper: {
+    position: "relative",
+    width: 60,
+    height: 60,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  svgRing: {
+    position: "absolute",
+    top: 0,
+    left: 0
+  },
+  ringTextContainer: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    lineHeight: 1
+  },
+  ringPercentText: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 12.5,
+    fontWeight: 700,
+    color: "#38D9C9"
+  },
+  ringLabelText: {
+    fontFamily: "'IBM Plex Sans', sans-serif",
+    fontSize: 7,
+    color: "#8493AA",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginTop: 2
   }
 };

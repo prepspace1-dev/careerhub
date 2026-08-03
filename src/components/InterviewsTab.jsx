@@ -20,6 +20,7 @@ export default function InterviewsTab({ active, interviews, onPersistInterview, 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStage, setFilterStage] = useState("All");
+  const [viewMode, setViewMode] = useState("board"); // 'board' or 'list'
 
   const list = interviews || [];
 
@@ -61,9 +62,9 @@ export default function InterviewsTab({ active, interviews, onPersistInterview, 
 
   // Monthly stats
   const now = new Date();
-  const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const currentMonthStr = now.toISOString().slice(0, 7); // "YYYY-MM"
   const callsThisMonth = list.filter(
-    (e) => e.date.startsWith(thisMonthKey) && ["Interview scheduled", "Interviewed", "Offer"].includes(e.stage)
+    (e) => e.date.startsWith(currentMonthStr) && (e.stage === "Interview scheduled" || e.stage === "Interviewed")
   ).length;
   
   const targetGoal = 2;
@@ -157,46 +158,120 @@ export default function InterviewsTab({ active, interviews, onPersistInterview, 
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
+          
+          <div style={styles.viewToggleGroup}>
+            <button 
+              style={{
+                ...styles.toggleBtn,
+                background: viewMode === "board" ? "#F2A93B" : "transparent",
+                color: viewMode === "board" ? "#0A0F1C" : "#8493AA"
+              }}
+              onClick={() => setViewMode("board")}
+            >
+              Board
+            </button>
+            <button 
+              style={{
+                ...styles.toggleBtn,
+                background: viewMode === "list" ? "#F2A93B" : "transparent",
+                color: viewMode === "list" ? "#0A0F1C" : "#8493AA"
+              }}
+              onClick={() => setViewMode("list")}
+            >
+              List
+            </button>
+          </div>
         </div>
       </div>
 
-      <div style={styles.sectionLabel}>ALL ENTRIES ({filteredList.length})</div>
-      {filteredList.length === 0 ? (
-        <div style={styles.emptyState}>
-          {searchQuery || filterStage !== "All"
-            ? "No applications match your filters."
-            : "No companies logged yet — add your first application above."}
-        </div>
-      ) : (
-        <div style={styles.historyList}>
-          {filteredList.map((e) => (
-            <div
-              key={e.id}
-              onClick={() => cycleStage(e.id)}
-              style={styles.historyItem}
-            >
-              <div style={styles.itemHeader}>
-                <span style={styles.companyName}>{e.company}</span>
-                <div style={styles.badgeRow}>
-                  <span style={{ ...styles.todayTagSmall, background: STAGE_COLORS[e.stage] }}>
-                    {e.stage}
-                  </span>
-                  <button 
-                    onClick={(evt) => deleteEntry(e.id, evt)} 
-                    style={styles.deleteBtn}
-                    title="Delete Entry"
-                  >
-                    <Trash2 size={12} />
-                  </button>
+      <div style={styles.sectionLabel}>
+        {viewMode === "list" ? `ALL ENTRIES (${filteredList.length})` : "PIPELINE BOARD"}
+      </div>
+
+      {viewMode === "list" ? (
+        filteredList.length === 0 ? (
+          <div style={styles.emptyState}>
+            {searchQuery || filterStage !== "All"
+              ? "No applications match your filters."
+              : "No companies logged yet — add your first application above."}
+          </div>
+        ) : (
+          <div style={styles.historyList}>
+            {filteredList.map((e) => (
+              <div
+                key={e.id}
+                onClick={() => cycleStage(e.id)}
+                style={styles.historyItem}
+              >
+                <div style={styles.itemHeader}>
+                  <span style={styles.companyName}>{e.company}</span>
+                  <div style={styles.badgeRow}>
+                    <span style={{ ...styles.todayTagSmall, background: STAGE_COLORS[e.stage] }}>
+                      {e.stage}
+                    </span>
+                    <button 
+                      onClick={(evt) => deleteEntry(e.id, evt)} 
+                      style={styles.deleteBtn}
+                      title="Delete Entry"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+                {e.notes && <div style={styles.historyText}>{e.notes}</div>}
+                <div style={styles.itemFooter}>
+                  <Calendar size={10} style={{ marginRight: 4 }} />
+                  <span>{niceDate(e.date)} · Tap card to update stage</span>
                 </div>
               </div>
-              {e.notes && <div style={styles.historyText}>{e.notes}</div>}
-              <div style={styles.itemFooter}>
-                <Calendar size={10} style={{ marginRight: 4 }} />
-                <span>{niceDate(e.date)} · Tap card to update stage</span>
+            ))}
+          </div>
+        )
+      ) : (
+        /* Kanban Board View */
+        <div className="kanban-board">
+          {STAGES.map((colStage) => {
+            const colEntries = filteredList.filter((item) => item.stage === colStage);
+            return (
+              <div className="kanban-column" key={colStage}>
+                <div className="kanban-column-header">
+                  <span className="kanban-column-title" style={{ color: STAGE_COLORS[colStage] }}>
+                    {colStage}
+                  </span>
+                  <span className="kanban-column-badge">{colEntries.length}</span>
+                </div>
+                <div className="kanban-cards-container">
+                  {colEntries.length > 0 ? (
+                    colEntries.map((e) => (
+                      <div 
+                        className="kanban-card" 
+                        key={e.id}
+                        onClick={() => cycleStage(e.id)}
+                        title="Click card to advance pipeline stage"
+                      >
+                        <div className="kanban-card-company">{e.company}</div>
+                        {e.notes && <div className="kanban-card-notes">{e.notes}</div>}
+                        <div className="kanban-card-footer">
+                          <span className="kanban-card-date">{niceDate(e.date)}</span>
+                          <div className="kanban-card-actions">
+                            <button 
+                              className="kanban-action-btn delete"
+                              onClick={(evt) => deleteEntry(e.id, evt)}
+                              title="Delete Application"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={styles.emptyStateColumn}>Empty</div>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -471,5 +546,33 @@ const styles = {
     fontSize: 9.5,
     color: "#5D8DC1",
     marginTop: 4
+  },
+  viewToggleGroup: {
+    display: "flex",
+    background: "#121A2B",
+    border: "1px solid #1C2842",
+    borderRadius: 8,
+    padding: "2px",
+    gap: 2
+  },
+  toggleBtn: {
+    fontSize: 10,
+    fontWeight: 600,
+    fontFamily: "'IBM Plex Mono', monospace",
+    padding: "3px 8px",
+    borderRadius: 6,
+    border: "none",
+    cursor: "pointer",
+    transition: "all 0.15s ease"
+  },
+  emptyStateColumn: {
+    fontFamily: "'IBM Plex Sans', sans-serif",
+    fontSize: 11,
+    color: "#5D8DC1",
+    fontStyle: "italic",
+    textAlign: "center",
+    padding: "24px 0",
+    border: "1px dashed #1C2842",
+    borderRadius: 8
   }
 };
