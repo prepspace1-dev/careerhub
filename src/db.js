@@ -195,7 +195,8 @@ export async function fetchInterviews(userId) {
     }
     return data;
   } else {
-    return await storage.get("interview-log-data", true) || [];
+    const data = await storage.get("interview-log-data", true);
+    return Array.isArray(data) ? data : [];
   }
 }
 
