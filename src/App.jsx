@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { LayoutDashboard, ListChecks, BookOpen, NotebookPen, Briefcase, LogOut, Cloud, CloudOff, User, RefreshCw, Award } from "lucide-react";
+import { LayoutDashboard, ListChecks, BookOpen, Database, Map, Building2, NotebookPen, Briefcase, LogOut, Cloud, CloudOff, User, RefreshCw, Award } from "lucide-react";
 import OverviewTab from "./components/OverviewTab";
 import TasksTab from "./components/TasksTab";
 import SkillsTab from "./components/SkillsTab";
+import ProblemVault from "./components/ProblemVault";
+import RoadmapsTab from "./components/RoadmapsTab";
+import CompanyPacksTab from "./components/CompanyPacksTab";
 import LogTab from "./components/LogTab";
 import InterviewsTab from "./components/InterviewsTab";
 import Auth from "./components/Auth";
@@ -16,7 +19,14 @@ import {
   fetchLogs, 
   saveLog, 
   fetchInterviews, 
-  saveInterview 
+  saveInterview,
+  fetchProblems,
+  saveProblem,
+  deleteProblem,
+  fetchRoadmapItems,
+  saveRoadmapItem,
+  fetchXPEvents
+  // Phase 3+: fetchRevisionQueue, addXPEvent, getTotalXP, completeRevision
 } from "./db";
 import { DEFAULT_SKILLS } from "./utils";
 
@@ -24,6 +34,9 @@ const TABS = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "tasks", label: "Tasks", icon: ListChecks },
   { id: "skills", label: "Skills", icon: BookOpen },
+  { id: "roadmaps", label: "Roadmaps", icon: Map },
+  { id: "problems", label: "Problem Vault", icon: Database },
+  { id: "companies", label: "Company Packs", icon: Building2 },
   { id: "log", label: "Log", icon: NotebookPen },
   { id: "interviews", label: "Interviews", icon: Briefcase },
 ];
@@ -39,6 +52,10 @@ export default function App() {
   const [skills, setSkills] = useState({});
   const [logs, setLogs] = useState({});
   const [interviews, setInterviews] = useState([]);
+  // v2 data
+  const [problems, setProblems] = useState([]);
+  const [roadmapItems, setRoadmapItems] = useState({});
+  const [_xpEvents, setXpEvents] = useState([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
@@ -48,7 +65,7 @@ export default function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const currentHash = window.location.hash.replace("#", "");
-      const validTabs = ["overview", "tasks", "skills", "log", "interviews"];
+      const validTabs = ["overview", "tasks", "skills", "roadmaps", "problems", "companies", "log", "interviews"];
       if (validTabs.includes(currentHash)) {
         setTab(currentHash);
       } else {
@@ -116,17 +133,23 @@ export default function App() {
   async function loadAllUserData(userId) {
     setDataLoaded(false);
     try {
-      const [tasksData, skillsData, logsData, interviewsData] = await Promise.all([
+      const [tasksData, skillsData, logsData, interviewsData, problemsData, roadmapData, xpData] = await Promise.all([
         fetchTasks(userId),
         fetchSkills(userId, DEFAULT_SKILLS),
         fetchLogs(userId),
-        fetchInterviews(userId)
+        fetchInterviews(userId),
+        fetchProblems(userId),
+        fetchRoadmapItems(userId),
+        fetchXPEvents(userId),
       ]);
       
       setTasks(tasksData);
       setSkills(skillsData);
       setLogs(logsData);
       setInterviews(interviewsData);
+      setProblems(problemsData || []);
+      setRoadmapItems(roadmapData || {});
+      setXpEvents(xpData || []);
     } catch (err) {
       console.error("Error loading application data:", err);
     } finally {
@@ -156,7 +179,9 @@ export default function App() {
     }
   }
 
-  async function persistSkill(skillId, nextLevel, nextSkills) {
+  // NOTE: Legacy skill level persist — levels are now computed from problems (Phase 2)
+  // Kept for potential future use. eslint-disable-line no-unused-vars
+  async function _persistSkill(skillId, nextLevel, nextSkills) {
     setSkills(nextSkills);
     setSyncing(true);
     try {
@@ -211,6 +236,75 @@ export default function App() {
       }
     } catch (err) {
       console.error("Sync error deleting interview:", err);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  // ── v2 Problem Vault Functions ──────────────────────────────────────────────
+
+  /**
+   * Optimistically add/update a problem in state, then sync to Supabase.
+   * Returns the saved problem (with ID).
+   */
+  async function persistProblem(problem) {
+    setSyncing(true);
+    try {
+      const saved = await saveProblem(user?.id, problem, problems);
+      setProblems(prev => {
+        const idx = prev.findIndex(p => p.id === saved.id);
+        if (idx >= 0) return prev.map((p, i) => i === idx ? saved : p);
+        return [saved, ...prev];
+      });
+      return saved;
+    } catch (err) {
+      console.error("Sync error saving problem:", err);
+      throw err;
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  /**
+   * Delete a problem by ID and remove it from local state.
+   */
+  async function deleteProblemEntry(problemId) {
+    setProblems(prev => prev.filter(p => p.id !== problemId));
+    setSyncing(true);
+    try {
+      await deleteProblem(user?.id, problemId, problems);
+    } catch (err) {
+      console.error("Sync error deleting problem:", err);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  /**
+   * Save a non-DSA subtopic status (not_started | learning | mastered).
+   * Stored in roadmap_items table keyed by (categoryId, subtopicId).
+   */
+  async function persistRoadmapItem(categoryId, subtopicId, status, notes = "") {
+    // Optimistic update
+    setRoadmapItems(prev => ({
+      ...prev,
+      [categoryId]: {
+        ...(prev[categoryId] || {}),
+        [subtopicId]: { status, notes },
+      },
+    }));
+    setSyncing(true);
+    try {
+      await saveRoadmapItem(
+        user?.id,
+        categoryId,
+        subtopicId,
+        status,
+        notes,
+        roadmapItems
+      );
+    } catch (err) {
+      console.error("Sync error saving roadmap item:", err);
     } finally {
       setSyncing(false);
     }
@@ -332,6 +426,8 @@ export default function App() {
                 skills={skills}
                 interviews={interviews}
                 logs={logs}
+                problems={problems}
+                roadmapItems={roadmapItems}
                 onNavigateToTab={handleTabChange}
               />
             )}
@@ -345,8 +441,32 @@ export default function App() {
             {tab === "skills" && (
               <SkillsTab 
                 active={true} 
-                skills={skills}
-                onPersistSkill={persistSkill}
+                problems={problems}
+                roadmapItems={roadmapItems}
+                onPersistProblem={persistProblem}
+                onDeleteProblem={deleteProblemEntry}
+                onPersistRoadmapItem={persistRoadmapItem}
+              />
+            )}
+            {tab === "roadmaps" && (
+              <RoadmapsTab
+                active={true}
+                roadmapItems={roadmapItems}
+                onPersistRoadmapItem={persistRoadmapItem}
+              />
+            )}
+            {tab === "problems" && (
+              <ProblemVault
+                active={true}
+                problems={problems}
+                onPersistProblem={persistProblem}
+                onDeleteProblem={deleteProblemEntry}
+              />
+            )}
+            {tab === "companies" && (
+              <CompanyPacksTab
+                active={true}
+                problems={problems}
               />
             )}
             {tab === "log" && (

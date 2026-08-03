@@ -1,440 +1,433 @@
-import React from "react";
-import { Zap, ChevronRight } from "lucide-react";
+import React, { useState } from "react";
+import { ChevronDown, ChevronUp, ChevronRight, Plus, Sparkles } from "lucide-react";
+import { TOPICS, LEVEL_META, computeTopicLevel } from "../data/topics";
+import AddProblemModal from "./AddProblemModal";
+import TopicDashboard from "./TopicDashboard";
+import ConceptDashboard from "./ConceptDashboard";
 
+/**
+ * SkillsTab v2 — SDE Product Manager Redesign
+ *
+ * 1. Collapsible Subject Categories with cute toggle up/down icons.
+ * 2. DSA category has Problem Vault logging (LeetCode links, patterns, etc.).
+ * 3. Non-DSA categories (Core Java, SQL, CS Fundamentals, Backend) have concept notes & interview cheat sheets.
+ * 4. 1-click status pills (Not Started | Learning | Mastered) + full notes editor per topic!
+ */
+export default function SkillsTab({ 
+  active, 
+  problems = [], 
+  roadmapItems = {}, 
+  onPersistProblem, 
+  onDeleteProblem,
+  onPersistRoadmapItem 
+}) {
+  const [selectedTopic, setSelectedTopic] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
-const LEVELS = [
-  { key: 0, label: "Not started", color: "#5D8DC1", fill: "transparent", border: "#2A3448" },
-  { key: 1, label: "Learning", color: "#F2A93B", fill: "#F2A93B", border: "#F2A93B" },
-  { key: 2, label: "Comfortable", color: "#38D9C9", fill: "#38D9C9", border: "#38D9C9" },
-  { key: 3, label: "Strong", color: "#4ADE80", fill: "#4ADE80", border: "#4ADE80" },
-];
+  // State to track collapsed status for each category (default: all expanded)
+  const [collapsed, setCollapsed] = useState({});
 
-const CATEGORIES = [
-  {
-    id: "dsa",
-    title: "Data Structures & Algorithms",
-    items: [
-      { id: "arrays", label: "Arrays", level: 3 },
-      { id: "strings", label: "Strings", level: 3 },
-      { id: "linkedlist", label: "Linked Lists", level: 1 },
-      { id: "stacksqueues", label: "Stacks & Queues", level: 0 },
-      { id: "trees", label: "Trees", level: 0 },
-      { id: "graphs", label: "Graphs (basic)", level: 0 },
-    ],
-  },
-  {
-    id: "java",
-    title: "Core Java",
-    items: [
-      { id: "syntax", label: "Syntax & Basics", level: 2 },
-      { id: "oop", label: "OOP Concepts", level: 1 },
-      { id: "collections", label: "Collections Framework", level: 1 },
-      { id: "exceptions", label: "Exception Handling", level: 0 },
-    ],
-  },
-  {
-    id: "db",
-    title: "Databases (SQL)",
-    items: [
-      { id: "sqlbasics", label: "SQL Basics (queries)", level: 1 },
-      { id: "joins", label: "Joins & Aggregates", level: 0 },
-      { id: "jdbc", label: "JDBC (Java + DB)", level: 0 },
-    ],
-  },
-  {
-    id: "cs",
-    title: "CS Fundamentals",
-    items: [
-      { id: "dbmsconcepts", label: "DBMS Concepts", level: 0 },
-      { id: "os", label: "OS Basics", level: 0 },
-      { id: "networking", label: "Networking Basics", level: 0 },
-    ],
-  },
-  {
-    id: "tools",
-    title: "Frameworks & Tools",
-    items: [
-      { id: "springboot", label: "Spring Boot", level: 0 },
-      { id: "restapi", label: "REST APIs", level: 0 },
-      { id: "git", label: "Git / GitHub", level: 0 },
-    ],
-  },
-  {
-    id: "projects",
-    title: "Projects",
-    items: [
-      { id: "inventory", label: "Inventory Tracker", level: 1 },
-      { id: "rag", label: "RAG Project", level: 1 },
-      { id: "upi", label: "UPI Transaction Project", level: 1 },
-    ],
-  },
-];
+  if (!active) return null;
 
-const DEFAULTS = {};
-CATEGORIES.forEach((c) => c.items.forEach((i) => (DEFAULTS[i.id] = i.level)));
+  const allProblems = problems || [];
 
-export default function SkillsTab({ active, skills, onPersistSkill }) {
-  const levels = skills || DEFAULTS;
-
-  function cycle(id) {
-    const cur = levels[id] ?? 0;
-    const nextLevel = (cur + 1) % LEVELS.length;
-    const nextLevels = { ...levels, [id]: nextLevel };
-    onPersistSkill(id, nextLevel, nextLevels);
+  function toggleCategory(catId, e) {
+    if (e) e.stopPropagation();
+    setCollapsed(prev => ({ ...prev, [catId]: !prev[catId] }));
   }
 
-  const allItems = CATEGORIES.flatMap((c) => c.items.map((i) => ({ ...i, cat: c.title })));
-  const counts = [0, 0, 0, 0];
-  allItems.forEach((i) => counts[levels[i.id] ?? 0]++);
+  function openTopic(topic, category) {
+    setSelectedTopic(topic);
+    setSelectedCategory(category);
+  }
 
-  // Focus next: items that are Level 0 or 1, sorted by level ascending
-  const focusNext = allItems
-    .filter((i) => (levels[i.id] ?? 0) <= 1)
-    .sort((a, b) => (levels[a.id] ?? 0) - (levels[b.id] ?? 0))
-    .slice(0, 4);
+  function closeTopic() {
+    setSelectedTopic(null);
+    setSelectedCategory(null);
+  }
 
-  // Total Progress Percentage
-  const maxScore = allItems.length * 3;
-  const currentScore = allItems.reduce((acc, item) => acc + (levels[item.id] ?? 0), 0);
-  const progressPercent = Math.round((currentScore / maxScore) * 100);
+  async function handleSaveProblem(problem) {
+    await onPersistProblem(problem);
+    setShowAddModal(false);
+  }
 
+  // Handle status update for non-DSA subtopics
+  async function handleStatusChange(categoryId, subtopicId, newStatus, e) {
+    if (e) e.stopPropagation();
+    if (onPersistRoadmapItem) {
+      const currentNotes = roadmapItems[categoryId]?.[subtopicId]?.notes || "";
+      await onPersistRoadmapItem(categoryId, subtopicId, newStatus, currentNotes);
+    }
+  }
+
+  // Helper to get non-DSA subtopic status
+  function getSubtopicStatus(categoryId, subtopicId) {
+    const catData = roadmapItems[categoryId];
+    if (catData && catData[subtopicId] && catData[subtopicId].status) {
+      return catData[subtopicId].status;
+    }
+    return "not_started";
+  }
+
+  // ── Topic Dashboard / Concept Dashboard drill-down ────────────────────────
+  if (selectedTopic && selectedCategory) {
+    if (selectedCategory.id === "dsa") {
+      return (
+        <TopicDashboard
+          topic={selectedTopic}
+          category={selectedCategory}
+          problems={allProblems}
+          onBack={closeTopic}
+          onPersistProblem={onPersistProblem}
+          onDeleteProblem={onDeleteProblem}
+        />
+      );
+    } else {
+      return (
+        <ConceptDashboard
+          topic={selectedTopic}
+          category={selectedCategory}
+          roadmapItems={roadmapItems}
+          onBack={closeTopic}
+          onPersistRoadmapItem={onPersistRoadmapItem}
+        />
+      );
+    }
+  }
+
+  // ── Main Skills View ───────────────────────────────────────────────────────
   return (
-    <div style={{ display: active ? "block" : "none" }} className="fade-in">
-      <div style={styles.header}>
+    <div className="fade-in">
+      {/* Page Header */}
+      <div style={s.pageHeader}>
         <div>
-          <div style={styles.eyebrowRow}>
-            <span style={styles.eyebrow}>SKILL MAP</span>
-          </div>
-          <h1 style={styles.title}>Where you stand</h1>
+          <span style={s.eyebrow}>
+            <Sparkles size={11} style={{ marginRight: 4, verticalAlign: "middle" }} />
+            LEARNING MAP
+          </span>
+          <h1 style={s.pageTitle}>Skill & Knowledge Hub</h1>
         </div>
-        <div style={styles.progressRingWrapper}>
-          <svg width="60" height="60" viewBox="0 0 60 60" style={styles.svgRing}>
-            {/* Background track */}
-            <circle
-              cx="30"
-              cy="30"
-              r="24"
-              stroke="#1C2842"
-              strokeWidth="4.5"
-              fill="transparent"
-            />
-            {/* Foreground animated ring */}
-            <circle
-              cx="30"
-              cy="30"
-              r="24"
-              stroke="#38D9C9"
-              strokeWidth="4.5"
-              fill="transparent"
-              strokeDasharray={2 * Math.PI * 24}
-              strokeDashoffset={2 * Math.PI * 24 * (1 - progressPercent / 100)}
-              strokeLinecap="round"
-              transform="rotate(-90 30 30)"
-              style={{ transition: "stroke-dashoffset 0.4s ease" }}
-            />
-          </svg>
-          <div style={styles.ringTextContainer}>
-            <span style={styles.ringPercentText}>{progressPercent}%</span>
-            <span style={styles.ringLabelText}>mastery</span>
+
+        {/* Quick action: Log DSA problem */}
+        <button onClick={() => setShowAddModal(true)} style={s.logBtn}>
+          <Plus size={13} /> Log DSA Problem
+        </button>
+      </div>
+
+      {/* Beginner-friendly subtitle banner */}
+      <div style={s.banner}>
+        <span style={s.bannerIcon}>🌱</span>
+        <div>
+          <div style={s.bannerTitle}>Beginner-Friendly Prep Dashboard</div>
+          <div style={s.bannerDesc}>
+            Track your coding practice under <strong>DSA</strong> and set your learning milestones for <strong>Java, SQL &amp; CS Core</strong> with 1-click status pills!
           </div>
         </div>
       </div>
-      
-      <p style={styles.subtitle}>Tap any skill to advance it: Not started → Learning → Comfortable → Strong</p>
 
-      <div style={styles.summaryRow}>
-        {LEVELS.map((l) => (
-          <div style={styles.summaryBox} key={l.key}>
-            <div style={{ ...styles.summaryNum, color: l.color }}>{counts[l.key]}</div>
-            <div style={styles.summaryLabel}>{l.label}</div>
-          </div>
-        ))}
-      </div>
+      {/* Category Accordion / Tree */}
+      <div style={s.tree}>
+        {Object.values(TOPICS).map(category => {
+          const isCollapsed = !!collapsed[category.id];
+          const isDSA = category.id === "dsa";
 
-      {focusNext.length > 0 && (
-        <div style={styles.focusBox}>
-          <div style={styles.focusHeader}>
-            <Zap size={13} color="#F2A93B" />
-            <span>FOCUS NEXT</span>
-          </div>
-          <div style={styles.focusList}>
-            {focusNext.map((f) => (
-              <div key={f.id} style={styles.focusItem}>
-                <ChevronRight size={12} color="#5D8DC1" />
-                <span style={{ color: "#E7EDF5", fontWeight: 500 }}>{f.label}</span>
-                <span style={{ color: "#5D8DC1", fontSize: 10.5 }}>· {f.cat}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+          // Calculate completed items for header
+          const totalSubtopics = category.subtopics.length;
+          let completedCount = 0;
 
-      <div style={styles.divider} />
+          if (isDSA) {
+            completedCount = category.subtopics.filter(st => {
+              const count = allProblems.filter(p => p.topic === st.id && p.status === "solved").length;
+              return count > 0;
+            }).length;
+          } else {
+            completedCount = category.subtopics.filter(st => {
+              return getSubtopicStatus(category.id, st.id) === "mastered";
+            }).length;
+          }
 
-      {CATEGORIES.map((cat) => (
-        <div key={cat.id} style={styles.categoryBlock}>
-          <div style={styles.categoryTitle}>{cat.title}</div>
-          <div style={styles.itemColumn}>
-            {cat.items.map((item) => {
-              const lvl = levels[item.id] ?? 0;
-              const meta = LEVELS[lvl];
-              return (
-                <button 
-                  key={item.id} 
-                  onClick={() => cycle(item.id)} 
-                  style={{
-                    ...styles.itemRow,
-                    borderColor: lvl > 0 ? "rgba(28, 40, 66, 0.8)" : "#1C2842",
-                    background: lvl > 0 ? "rgba(14, 22, 38, 0.9)" : "#0E1626"
-                  }}
-                >
-                  <span style={styles.itemLabel}>{item.label}</span>
-                  <span style={styles.itemRight}>
-                    <span style={{ ...styles.statusTag, color: meta.color }}>
-                      {meta.label}
-                    </span>
-                    <span style={styles.dotsRow}>
-                      {LEVELS.slice(1).map((l) => (
-                        <span 
-                          key={l.key} 
-                          style={{
-                            ...styles.dot,
-                            background: lvl >= l.key ? l.fill : "transparent",
-                            borderColor: lvl >= l.key ? l.color : "#2A3448"
-                          }} 
-                        />
-                      ))}
-                    </span>
+          return (
+            <div key={category.id} style={s.categoryCard}>
+              {/* Collapsible Category Header */}
+              <div 
+                style={s.catHeader} 
+                onClick={(e) => toggleCategory(category.id, e)}
+              >
+                <div style={s.catLeft}>
+                  <span style={{ ...s.catAccent, background: category.color }} />
+                  <span style={{ ...s.catTitle, color: category.color }}>
+                    {category.icon} {category.fullLabel}
                   </span>
+                  <span style={s.catSummary}>
+                    {completedCount} of {totalSubtopics} topics completed
+                  </span>
+                </div>
+
+                {/* Cute toggle icon */}
+                <button 
+                  style={s.toggleBtn} 
+                  onClick={(e) => toggleCategory(category.id, e)}
+                  title={isCollapsed ? "Expand section" : "Minimize section"}
+                >
+                  {isCollapsed ? (
+                    <ChevronDown size={16} color="#38D9C9" />
+                  ) : (
+                    <ChevronUp size={16} color="#8493AA" />
+                  )}
                 </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+              </div>
+
+              {/* Subtopic Rows (Rendered when expanded) */}
+              {!isCollapsed && (
+                <div style={s.subtopicList}>
+                  {category.subtopics.map((topic, idx) => {
+                    const isLast = idx === category.subtopics.length - 1;
+
+                    // --- DSA Row ---
+                    if (isDSA) {
+                      const level = computeTopicLevel(topic.id, allProblems);
+                      const meta = LEVEL_META[level];
+                      const solvedCount = allProblems.filter(p => p.topic === topic.id && p.status === "solved").length;
+                      const solvingCount = allProblems.filter(p => p.topic === topic.id && p.status === "solving").length;
+
+                      return (
+                        <div
+                          key={topic.id}
+                          onClick={() => openTopic(topic, category)}
+                          style={{
+                            ...s.topicRow,
+                            borderBottom: isLast ? "none" : "1px solid #0D1526",
+                          }}
+                          className="clickable-row"
+                        >
+                          {/* Level Dot */}
+                          <span style={{
+                            ...s.levelDot,
+                            background: meta.color,
+                            boxShadow: level > 0 ? `0 0 8px ${meta.color}88` : "none",
+                          }} />
+
+                          {/* Topic Name */}
+                          <div style={s.topicTextWrap}>
+                            <span style={s.topicLabel}>{topic.label}</span>
+                            {solvedCount > 0 && (
+                              <span style={s.solvedTag}>
+                                ✓ {solvedCount} {solvedCount === 1 ? "problem" : "problems"}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* In Progress Tag */}
+                          {solvingCount > 0 && (
+                            <span style={s.solvingBadge}>{solvingCount} solving</span>
+                          )}
+
+                          {/* Level Chip */}
+                          <span style={{
+                            ...s.levelChip,
+                            background: meta.bgColor,
+                            color: meta.color,
+                          }}>
+                            {meta.label}
+                          </span>
+
+                          <ChevronRight size={14} color="#3A4560" />
+                        </div>
+                      );
+                    }
+
+                    // --- Non-DSA Row (Java, SQL, CS Core, Backend) ---
+                    const currentStatus = getSubtopicStatus(category.id, topic.id);
+                    const topicNotes = roadmapItems[category.id]?.[topic.id]?.notes || "";
+
+                    return (
+                      <div
+                        key={topic.id}
+                        onClick={() => openTopic(topic, category)}
+                        style={{
+                          ...s.topicRow,
+                          borderBottom: isLast ? "none" : "1px solid #0D1526",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {/* Status Icon */}
+                        <span style={{
+                          ...s.levelDot,
+                          background: currentStatus === "mastered" ? "#4ADE80" : currentStatus === "learning" ? "#F2A93B" : "#2A3448",
+                          boxShadow: currentStatus === "mastered" ? "0 0 8px rgba(74,222,128,0.5)" : "none",
+                        }} />
+
+                        {/* Topic Name */}
+                        <div style={s.topicTextWrap}>
+                          <span style={{ ...s.topicLabel, color: currentStatus === "mastered" ? "#E7EDF5" : "#A6B4C9" }}>
+                            {topic.label}
+                          </span>
+                          {topicNotes && (
+                            <span style={s.notesIndicatorTag} title="Has notes">
+                              📝 Notes
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Interactive Status Pills */}
+                        <div style={s.statusPillGroup}>
+                          <button
+                            onClick={(e) => handleStatusChange(category.id, topic.id, "not_started", e)}
+                            style={{
+                              ...s.pillBtn,
+                              background: currentStatus === "not_started" ? "rgba(42,52,72,0.5)" : "transparent",
+                              color: currentStatus === "not_started" ? "#8493AA" : "#3A4560",
+                              borderColor: currentStatus === "not_started" ? "#5D8DC1" : "#1C2842",
+                            }}
+                          >
+                            Not Started
+                          </button>
+
+                          <button
+                            onClick={(e) => handleStatusChange(category.id, topic.id, "learning", e)}
+                            style={{
+                              ...s.pillBtn,
+                              background: currentStatus === "learning" ? "rgba(242,169,59,0.15)" : "transparent",
+                              color: currentStatus === "learning" ? "#F2A93B" : "#3A4560",
+                              borderColor: currentStatus === "learning" ? "#F2A93B" : "#1C2842",
+                            }}
+                          >
+                            📖 Learning
+                          </button>
+
+                          <button
+                            onClick={(e) => handleStatusChange(category.id, topic.id, "mastered", e)}
+                            style={{
+                              ...s.pillBtn,
+                              background: currentStatus === "mastered" ? "rgba(74,222,128,0.15)" : "transparent",
+                              color: currentStatus === "mastered" ? "#4ADE80" : "#3A4560",
+                              borderColor: currentStatus === "mastered" ? "#4ADE80" : "#1C2842",
+                              fontWeight: currentStatus === "mastered" ? 700 : 500,
+                            }}
+                          >
+                            ✓ Mastered
+                          </button>
+                        </div>
+
+                        <ChevronRight size={14} color="#3A4560" />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {showAddModal && (
+        <AddProblemModal
+          onClose={() => setShowAddModal(false)}
+          onSave={handleSaveProblem}
+        />
+      )}
     </div>
   );
 }
 
-const styles = {
-  loading: {
-    minHeight: 200,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#8493AA",
-    fontFamily: "'IBM Plex Mono', monospace"
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 10
-  },
-  eyebrowRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 6
+const s = {
+  pageHeader: {
+    display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+    marginBottom: 16, flexWrap: "wrap", gap: 12,
   },
   eyebrow: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
-    letterSpacing: 2,
-    color: "#5D8DC1"
+    fontSize: 10.5, letterSpacing: 2, color: "#38D9C9",
+    display: "block", marginBottom: 4, fontWeight: 600,
   },
-  syncIndicator: {
+  pageTitle: {
     fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 9,
-    color: "#38D9C9",
-    background: "rgba(56, 217, 201, 0.1)",
-    padding: "2px 6px",
-    borderRadius: 4
+    fontSize: 22, fontWeight: 700, color: "#E7EDF5", margin: 0,
   },
-  title: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 19,
-    fontWeight: 600,
-    color: "#E7EDF5",
-    margin: "0 0 6px"
+  logBtn: {
+    display: "flex", alignItems: "center", gap: 6,
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, fontWeight: 700,
+    background: "linear-gradient(135deg, #38D9C9 0%, #5D8DC1 100%)",
+    color: "#0A0F1C", padding: "9px 16px", borderRadius: 10,
+    boxShadow: "0 2px 14px rgba(56,217,201,0.25)", cursor: "pointer",
   },
-  percentBox: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-end",
-    background: "rgba(56, 217, 201, 0.08)",
-    border: "1px solid rgba(56, 217, 201, 0.2)",
-    borderRadius: 12,
-    padding: "6px 12px",
-    flexShrink: 0
+  banner: {
+    display: "flex", alignItems: "center", gap: 14,
+    background: "rgba(18,26,43,0.45)", border: "1px solid #1C2842",
+    borderRadius: 14, padding: "14px 18px", marginBottom: 20,
   },
-  percentNum: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontWeight: 700,
-    color: "#38D9C9",
-    fontSize: 14
+  bannerIcon: { fontSize: 22, flexShrink: 0 },
+  bannerTitle: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, fontWeight: 700,
+    color: "#E7EDF5", marginBottom: 2,
   },
-  percentLabel: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 8.5,
-    color: "#8493AA"
+  bannerDesc: {
+    fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12, color: "#8493AA",
+    lineHeight: 1.4,
   },
-  subtitle: {
-    fontFamily: "'IBM Plex Sans', sans-serif",
-    fontSize: 12.5,
-    color: "#8493AA",
-    margin: "0 0 20px",
-    lineHeight: 1.5
-  },
-  summaryRow: {
-    display: "flex",
-    gap: 8,
-    marginBottom: 18
-  },
-  summaryBox: {
-    flex: 1,
-    background: "#0E1626",
+  tree: { display: "flex", flexDirection: "column", gap: 14 },
+  categoryCard: {
+    background: "rgba(14,22,38,0.55)",
     border: "1px solid #1C2842",
-    borderRadius: 10,
-    padding: "10px 4px",
-    textAlign: "center"
+    borderRadius: 16, overflow: "hidden",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
   },
-  summaryNum: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 18,
-    fontWeight: 700
+  catHeader: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "14px 18px", background: "rgba(18,26,43,0.6)",
+    cursor: "pointer", userSelect: "none",
+    transition: "background 0.15s ease",
   },
-  summaryLabel: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 8.5,
-    color: "#8493AA",
-    marginTop: 3,
-    lineHeight: 1.3
+  catLeft: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
+  catAccent: { width: 4, height: 18, borderRadius: 2, flexShrink: 0 },
+  catTitle: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 13.5, fontWeight: 700,
   },
-  focusBox: {
-    background: "#0E1626",
-    border: "1px solid #2A3448",
-    borderRadius: 12,
-    padding: "14px 16px",
-    marginBottom: 22
+  catSummary: {
+    fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 11, color: "#5D8DC1",
+    marginLeft: 6,
   },
-  focusHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 10.5,
-    letterSpacing: 1.5,
-    color: "#F2A93B",
-    marginBottom: 10
+  toggleBtn: {
+    background: "rgba(28,40,66,0.5)", border: "1px solid #1C2842",
+    borderRadius: 8, padding: "4px 8px", display: "flex", alignItems: "center",
+    cursor: "pointer", transition: "all 0.15s ease",
   },
-  focusList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 7
+  subtopicList: { display: "flex", flexDirection: "column" },
+  topicRow: {
+    display: "flex", alignItems: "center", gap: 12,
+    padding: "12px 18px", width: "100%", textAlign: "left",
+    background: "transparent", transition: "background 0.12s ease",
   },
-  focusItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
+  topicTextWrap: { display: "flex", alignItems: "center", gap: 8, flex: 1 },
+  levelDot: {
+    width: 9, height: 9, borderRadius: "50%", flexShrink: 0,
+  },
+  topicLabel: {
     fontFamily: "'IBM Plex Sans', sans-serif",
-    fontSize: 13
+    fontSize: 13.5, fontWeight: 500, color: "#E7EDF5", flex: 1,
   },
-  divider: {
-    height: 1,
-    background: "#1C2842",
-    margin: "18px 0 14px"
+  solvedTag: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: "#4ADE80",
+    background: "rgba(74,222,128,0.1)", padding: "1px 7px", borderRadius: 6,
   },
-  categoryBlock: {
-    marginBottom: 26
+  notesIndicatorTag: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: "#38D9C9",
+    background: "rgba(56,217,201,0.1)", padding: "1px 7px", borderRadius: 6,
   },
-  categoryTitle: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 11,
-    letterSpacing: 1.5,
-    color: "#5D8DC1",
-    marginBottom: 10,
-    textTransform: "uppercase"
+  solvingBadge: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, fontWeight: 600,
+    background: "rgba(242,169,59,0.12)", color: "#F2A93B",
+    padding: "2px 8px", borderRadius: 8, flexShrink: 0,
   },
-  itemColumn: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 8
+  levelChip: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, fontWeight: 700,
+    padding: "3px 10px", borderRadius: 10, flexShrink: 0,
   },
-  itemRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    border: "1px solid",
-    borderRadius: 10,
-    padding: "12px 14px",
-    width: "100%",
-    textAlign: "left",
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-    ":hover": {
-      transform: "translateX(2px)"
-    }
+  statusPillGroup: { display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" },
+  pillBtn: {
+    fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5,
+    padding: "3px 10px", borderRadius: 14, border: "1px solid",
+    cursor: "pointer", transition: "all 0.15s ease", whiteSpace: "nowrap",
   },
-  itemLabel: {
-    fontFamily: "'IBM Plex Sans', sans-serif",
-    fontSize: 13.5,
-    fontWeight: 500,
-    color: "#E7EDF5"
-  },
-  itemRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10
-  },
-  statusTag: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 10.5,
-    minWidth: 78,
-    textAlign: "right"
-  },
-  dotsRow: {
-    display: "flex",
-    gap: 3
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-    border: "1.5px solid"
-  },
-  progressRingWrapper: {
-    position: "relative",
-    width: 60,
-    height: 60,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  svgRing: {
-    position: "absolute",
-    top: 0,
-    left: 0
-  },
-  ringTextContainer: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    lineHeight: 1
-  },
-  ringPercentText: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: 12.5,
-    fontWeight: 700,
-    color: "#38D9C9"
-  },
-  ringLabelText: {
-    fontFamily: "'IBM Plex Sans', sans-serif",
-    fontSize: 7,
-    color: "#8493AA",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginTop: 2
-  }
 };
