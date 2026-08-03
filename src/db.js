@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { generateUUID } from "./utils";
 
 // Helper for local storage access with window.storage compatibility
 const storage = {
@@ -196,7 +197,19 @@ export async function fetchInterviews(userId) {
     return data;
   } else {
     const data = await storage.get("interview-log-data", true);
-    return Array.isArray(data) ? data : [];
+    const list = Array.isArray(data) ? data : [];
+    let dirty = false;
+    const cleaned = list.map((item) => {
+      if (!item.id || item.id.length < 20 || !item.id.includes("-")) {
+        item.id = generateUUID();
+        dirty = true;
+      }
+      return item;
+    });
+    if (dirty) {
+      await storage.set("interview-log-data", cleaned);
+    }
+    return cleaned;
   }
 }
 

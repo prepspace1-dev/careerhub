@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Plus, Zap, Trash2, Calendar, Search } from "lucide-react";
-import { dateKey, niceDate } from "../utils";
+import { dateKey, niceDate, generateUUID } from "../utils";
 
 const STAGE_COLORS = {
   Applied: "#5D8DC1",
@@ -26,7 +26,7 @@ export default function InterviewsTab({ active, interviews, onPersistInterview, 
   function addEntry() {
     if (!company.trim()) return;
     const newEntry = {
-      id: Date.now().toString(),
+      id: generateUUID(),
       company: company.trim(),
       stage,
       notes: notes.trim(),
