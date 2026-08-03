@@ -1,7 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Plus, Zap, Trash2, Calendar, Search } from "lucide-react";
-import { fetchInterviews, saveInterview } from "../db";
-import { supabase } from "../supabaseClient";
 import { dateKey, niceDate } from "../utils";
 
 const STAGE_COLORS = {
@@ -14,34 +12,18 @@ const STAGE_COLORS = {
 
 const STAGES = ["Applied", "Interview scheduled", "Interviewed", "Offer", "Rejected"];
 
-export default function InterviewsTab({ active, userId }) {
-  const [list, setList] = useState(null);
+export default function InterviewsTab({ active, interviews, onPersistInterview, onDeleteInterview }) {
   const [company, setCompany] = useState("");
   const [stage, setStage] = useState("Applied");
   const [notes, setNotes] = useState("");
-  const [syncing, setSyncing] = useState(false);
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStage, setFilterStage] = useState("All");
 
-  useEffect(() => {
-    if (!active) return;
-    (async () => {
-      setSyncing(true);
-      const data = await fetchInterviews(userId);
-      setList(data);
-      setSyncing(false);
-    })();
-  }, [active, userId]);
+  const list = interviews || [];
 
-  async function persist(nextList) {
-    setList(nextList);
-  }
-
-  if (!list) return <div style={styles.loading}>loading…</div>;
-
-  async function addEntry() {
+  function addEntry() {
     if (!company.trim()) return;
     const newEntry = {
       id: Date.now().toString(),
@@ -52,19 +34,13 @@ export default function InterviewsTab({ active, userId }) {
     };
 
     const nextList = [newEntry, ...list];
-    persist(nextList);
+    onPersistInterview(newEntry, nextList);
     setCompany("");
     setNotes("");
     setStage("Applied");
-
-    try {
-      await saveInterview(userId, newEntry, nextList);
-    } catch (e) {
-      console.error("Failed to save new interview:", e);
-    }
   }
 
-  async function cycleStage(id) {
+  function cycleStage(id) {
     const nextList = list.map((e) => {
       if (e.id === id) {
         const nextIndex = (STAGES.indexOf(e.stage) + 1) % STAGES.length;
@@ -72,38 +48,15 @@ export default function InterviewsTab({ active, userId }) {
       }
       return e;
     });
-    persist(nextList);
 
     const updatedItem = nextList.find((e) => e.id === id);
-    try {
-      await saveInterview(userId, updatedItem, nextList);
-    } catch (e) {
-      console.error("Failed to update interview stage:", e);
-    }
+    onPersistInterview(updatedItem, nextList);
   }
 
-  async function deleteEntry(id, e) {
+  function deleteEntry(id, e) {
     e.stopPropagation(); // Avoid triggering cycleStage
     const nextList = list.filter((item) => item.id !== id);
-    persist(nextList);
-
-    try {
-      if (supabase && userId) {
-        await supabase
-          .from("interviews")
-          .delete()
-          .eq("id", id);
-      } else {
-        const stringValue = JSON.stringify(nextList);
-        if (window.storage && typeof window.storage.set === "function") {
-          await window.storage.set("interview-log-data", stringValue, false);
-        } else {
-          localStorage.setItem("interview-log-data", stringValue);
-        }
-      }
-    } catch (err) {
-      console.error("Error deleting interview:", err);
-    }
+    onDeleteInterview(id, nextList);
   }
 
   // Monthly stats

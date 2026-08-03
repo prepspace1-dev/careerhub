@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Save, Check, Calendar, Search, Sparkles, Tag } from "lucide-react";
-import { fetchLogs, saveLog, fetchTasks } from "../db";
 import { dateKey, niceDate } from "../utils";
 
 const ALL_TAGS = [
@@ -72,9 +71,8 @@ function compileLogEntry(mode, data) {
   return `${tagsHeader}### 🏆 Accomplished\n${data.accomplished || "Nothing logged"}\n\n### 🛑 Blockers\n${data.blockers || "None"}\n\n### 🎯 Tomorrow's Plan\n${data.plan || "Same direction"}`;
 }
 
-export default function LogTab({ active, userId }) {
-  const [entries, setEntries] = useState(null);
-  const [tasksHistory, setTasksHistory] = useState({});
+export default function LogTab({ active, logs, tasksHistory, onPersistLog }) {
+  const entries = logs || {};
   const [selectedDate, setSelectedDate] = useState("");
   
   // Editor state
@@ -86,7 +84,6 @@ export default function LogTab({ active, userId }) {
   const [selectedTags, setSelectedTags] = useState([]);
   
   const [savedFlash, setSavedFlash] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -96,24 +93,13 @@ export default function LogTab({ active, userId }) {
   const todayKey = useMemo(() => dateKey(today), [today]);
 
   useEffect(() => {
-    if (!active) return;
-    (async () => {
-      setSyncing(true);
-      const logData = await fetchLogs(userId);
-      setEntries(logData);
-      
-      const taskData = await fetchTasks(userId);
-      setTasksHistory(taskData);
-
-      if (!selectedDate) {
-        loadEntryData(todayKey, logData);
-      } else {
-        loadEntryData(selectedDate, logData);
-      }
-      setSyncing(false);
-    })();
+    if (!selectedDate) {
+      loadEntryData(todayKey, entries);
+    } else {
+      loadEntryData(selectedDate, entries);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, userId]);
+  }, [entries, selectedDate, todayKey]);
 
   function loadEntryData(key, allEntries = entries) {
     setSelectedDate(key);
@@ -163,7 +149,7 @@ export default function LogTab({ active, userId }) {
     );
   }
 
-  async function save() {
+  function save() {
     let finalContent = "";
     if (editorMode === "freeform") {
       finalContent = compileLogEntry("freeform", { freeformText, tags: selectedTags });
@@ -172,18 +158,10 @@ export default function LogTab({ active, userId }) {
     }
 
     const nextEntries = { ...entries, [selectedDate]: finalContent };
-    setEntries(nextEntries);
-    
-    try {
-      await saveLog(userId, selectedDate, finalContent, nextEntries);
-      setSavedFlash(true);
-      setTimeout(() => setSavedFlash(false), 1400);
-    } catch (e) {
-      console.error("Failed to save daily log:", e);
-    }
+    onPersistLog(selectedDate, finalContent, nextEntries);
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1400);
   }
-
-  if (!entries) return <div style={styles.loading}>loading…</div>;
 
   // Filter logs based on search text and tag selections
   const filteredPastDates = Object.keys(entries)
@@ -227,7 +205,6 @@ export default function LogTab({ active, userId }) {
       <div style={styles.header}>
         <div style={styles.eyebrowRow}>
           <span style={styles.eyebrow}>WORKLOG & INSIGHTS</span>
-          {syncing && <span style={styles.syncIndicator}>Syncing</span>}
         </div>
         <h1 style={styles.title}>Redesigned Developer Log</h1>
       </div>

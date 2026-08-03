@@ -37,3 +37,28 @@ export function niceDate(str) {
   const d = new Date(str + "T00:00:00");
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
+
+export const DEFAULT_SKILLS = {
+  arrays: 3,
+  strings: 3,
+  linkedlist: 1,
+  stacksqueues: 0,
+  trees: 0,
+  graphs: 0,
+  syntax: 2,
+  oop: 1,
+  collections: 1,
+  exceptions: 0,
+  sqlbasics: 1,
+  joins: 0,
+  jdbc: 0,
+  dbmsconcepts: 0,
+  os: 0,
+  networking: 0,
+  springboot: 0,
+  restapi: 0,
+  git: 0,
+  inventory: 1,
+  rag: 1,
+  upi: 1
+};

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Check, Zap, Plus, Minus, RotateCcw, RefreshCw, Calendar } from "lucide-react";
-import { fetchTasks, saveTasks } from "../db";
+import { Check, Zap, Plus, Minus, RotateCcw, Calendar } from "lucide-react";
+
 import { dateKey, tasksFor, dayComplete } from "../utils";
 
 const APPS_TARGET = 3;
@@ -14,50 +14,29 @@ const NOTE_PLACEHOLDERS = {
   recap: "e.g. What you can now explain cold",
 };
 
-export default function TasksTab({ active, userId }) {
-  const [history, setHistory] = useState(null);
-  const [noteDrafts, setNoteDrafts] = useState({});
-  const [selectedDateKey, setSelectedDateKey] = useState("");
-  const [syncing, setSyncing] = useState(false);
-
+export default function TasksTab({ active, tasksHistory, onPersistTasks }) {
   const today = useMemo(() => new Date(), []);
   const todayKey = useMemo(() => dateKey(today), [today]);
+  
+  const [selectedDateKey, setSelectedDateKey] = useState(todayKey);
+  const [noteDrafts, setNoteDrafts] = useState({});
 
-  useEffect(() => {
-    if (!active) return;
-    (async () => {
-      setSyncing(true);
-      const data = await fetchTasks(userId);
-      setHistory(data);
-      if (!selectedDateKey) {
-        setSelectedDateKey(todayKey);
-        setNoteDrafts((data[todayKey] && data[todayKey].notes) || {});
-      } else {
-        setNoteDrafts((data[selectedDateKey] && data[selectedDateKey].notes) || {});
-      }
-      setSyncing(false);
-    })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, userId]);
+  const history = tasksHistory || {};
 
   // Update drafts when selecting a different date
   useEffect(() => {
-    if (history) {
-      setNoteDrafts((history[selectedDateKey] && history[selectedDateKey].notes) || {});
+    const data = tasksHistory || {};
+    if (data[selectedDateKey]) {
+      setNoteDrafts(data[selectedDateKey].notes || {});
+    } else {
+      setNoteDrafts({});
     }
-  }, [selectedDateKey, history]);
+  }, [selectedDateKey, tasksHistory]);
 
-  async function persist(nextHistory) {
-    setHistory(nextHistory);
-    try {
-      const activeData = nextHistory[selectedDateKey] || {};
-      await saveTasks(userId, selectedDateKey, activeData, nextHistory);
-    } catch (e) {
-      console.error("Failed to persist task change:", e);
-    }
+  function persist(nextHistory) {
+    const activeData = nextHistory[selectedDateKey] || {};
+    onPersistTasks(nextHistory, selectedDateKey, activeData);
   }
-
-  if (!history) return <div style={styles.loading}>loading…</div>;
 
   const selectedDate = new Date(selectedDateKey + "T00:00:00");
   const isSelectedToday = selectedDateKey === todayKey;
@@ -166,7 +145,6 @@ export default function TasksTab({ active, userId }) {
         <div>
           <div style={styles.eyebrowRow}>
             <span style={styles.eyebrow}>{isSelectedToday ? "DAILY CIRCUIT" : "HISTORIC CIRCUITS"}</span>
-            {syncing && <span style={styles.syncIndicator}><RefreshCw size={10} style={{ animation: "spin 1s linear infinite" }} /> Syncing</span>}
           </div>
           <h1 style={styles.title}>
             {selectedDate.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}

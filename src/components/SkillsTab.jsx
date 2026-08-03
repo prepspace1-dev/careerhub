@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Zap, ChevronRight } from "lucide-react";
-import { fetchSkills, saveSkill } from "../db";
+
 
 const LEVELS = [
   { key: 0, label: "Not started", color: "#5D8DC1", fill: "transparent", border: "#2A3448" },
@@ -73,33 +73,14 @@ const CATEGORIES = [
 const DEFAULTS = {};
 CATEGORIES.forEach((c) => c.items.forEach((i) => (DEFAULTS[i.id] = i.level)));
 
-export default function SkillsTab({ active, userId }) {
-  const [levels, setLevels] = useState(null);
-  const [syncing, setSyncing] = useState(false);
+export default function SkillsTab({ active, skills, onPersistSkill }) {
+  const levels = skills || DEFAULTS;
 
-  useEffect(() => {
-    if (!active) return;
-    (async () => {
-      setSyncing(true);
-      const data = await fetchSkills(userId, DEFAULTS);
-      setLevels(data);
-      setSyncing(false);
-    })();
-  }, [active, userId]);
-
-  if (!levels) return <div style={styles.loading}>loading…</div>;
-
-  async function cycle(id) {
+  function cycle(id) {
     const cur = levels[id] ?? 0;
     const nextLevel = (cur + 1) % LEVELS.length;
     const nextLevels = { ...levels, [id]: nextLevel };
-    setLevels(nextLevels);
-
-    try {
-      await saveSkill(userId, id, nextLevel, nextLevels);
-    } catch (e) {
-      console.error("Failed to save skill update:", e);
-    }
+    onPersistSkill(id, nextLevel, nextLevels);
   }
 
   const allItems = CATEGORIES.flatMap((c) => c.items.map((i) => ({ ...i, cat: c.title })));

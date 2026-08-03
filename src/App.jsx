@@ -1,12 +1,23 @@
 import React, { useState, useEffect } from "react";
-import { ListChecks, BookOpen, NotebookPen, Briefcase, LogOut, Cloud, CloudOff, User } from "lucide-react";
+import { ListChecks, BookOpen, NotebookPen, Briefcase, LogOut, Cloud, CloudOff, User, RefreshCw } from "lucide-react";
 import TasksTab from "./components/TasksTab";
 import SkillsTab from "./components/SkillsTab";
 import LogTab from "./components/LogTab";
 import InterviewsTab from "./components/InterviewsTab";
 import Auth from "./components/Auth";
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
-import { migrateLocalDataToSupabase } from "./db";
+import { 
+  migrateLocalDataToSupabase, 
+  fetchTasks, 
+  saveTasks, 
+  fetchSkills, 
+  saveSkill, 
+  fetchLogs, 
+  saveLog, 
+  fetchInterviews, 
+  saveInterview 
+} from "./db";
+import { DEFAULT_SKILLS } from "./utils";
 
 const TABS = [
   { id: "tasks", label: "Tasks", icon: ListChecks },
@@ -20,8 +31,40 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [useLocalMode, setUseLocalMode] = useState(false);
   const [authInitialized, setAuthInitialized] = useState(false);
+  
+  // Central Data States
+  const [tasks, setTasks] = useState({});
+  const [skills, setSkills] = useState({});
+  const [logs, setLogs] = useState({});
+  const [interviews, setInterviews] = useState([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const hasSupabase = isSupabaseConfigured();
+
+  // Hash-based Routing
+  useEffect(() => {
+    const handleHashChange = () => {
+      const currentHash = window.location.hash.replace("#", "");
+      const validTabs = ["tasks", "skills", "log", "interviews"];
+      if (validTabs.includes(currentHash)) {
+        setTab(currentHash);
+      } else {
+        // Fallback default
+        setTab("tasks");
+        window.location.hash = "#tasks";
+      }
+    };
+
+    window.addEventListener("hashchange", handleHashChange);
+    handleHashChange(); // Run on mount
+
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  const handleTabChange = (newTab) => {
+    window.location.hash = `#${newTab}`;
+  };
 
   // Listen to Supabase Auth State
   useEffect(() => {
@@ -34,9 +77,12 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
-        migrateLocalDataToSupabase(session.user.id);
+        migrateLocalDataToSupabase(session.user.id).then(() => {
+          loadAllUserData(session.user.id);
+        });
+      } else {
+        setAuthInitialized(true);
       }
-      setAuthInitialized(true);
     });
 
     // Listen to changes
@@ -44,8 +90,10 @@ export default function App() {
       if (session?.user) {
         setUser(session.user);
         await migrateLocalDataToSupabase(session.user.id);
+        await loadAllUserData(session.user.id);
       } else {
         setUser(null);
+        setDataLoaded(false);
       }
       setAuthInitialized(true);
     });
@@ -55,19 +103,125 @@ export default function App() {
     };
   }, [hasSupabase]);
 
+  // Load data for guest / offline mode
+  useEffect(() => {
+    if (useLocalMode || !hasSupabase) {
+      loadAllUserData(null);
+    }
+  }, [useLocalMode, hasSupabase]);
+
+  // Parallel Loader for User Data
+  async function loadAllUserData(userId) {
+    setDataLoaded(false);
+    try {
+      const [tasksData, skillsData, logsData, interviewsData] = await Promise.all([
+        fetchTasks(userId),
+        fetchSkills(userId, DEFAULT_SKILLS),
+        fetchLogs(userId),
+        fetchInterviews(userId)
+      ]);
+      
+      setTasks(tasksData);
+      setSkills(skillsData);
+      setLogs(logsData);
+      setInterviews(interviewsData);
+    } catch (err) {
+      console.error("Error loading application data:", err);
+    } finally {
+      setDataLoaded(true);
+    }
+  }
+
   const handleLogout = async () => {
     if (hasSupabase) {
       await supabase.auth.signOut();
       setUser(null);
       setUseLocalMode(false);
+      setDataLoaded(false);
     }
   };
 
-  if (!authInitialized) {
+  // Centralized Persist Functions (Optimistic UI updates + Background syncing)
+  async function persistTasks(nextTasks, selectedDateKey, activeDayData) {
+    setTasks(nextTasks);
+    setSyncing(true);
+    try {
+      await saveTasks(user?.id, selectedDateKey, activeDayData, nextTasks);
+    } catch (err) {
+      console.error("Sync error saving tasks:", err);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function persistSkill(skillId, nextLevel, nextSkills) {
+    setSkills(nextSkills);
+    setSyncing(true);
+    try {
+      await saveSkill(user?.id, skillId, nextLevel, nextSkills);
+    } catch (err) {
+      console.error("Sync error saving skill:", err);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function persistLog(selectedDateKey, draftText, nextLogs) {
+    setLogs(nextLogs);
+    setSyncing(true);
+    try {
+      await saveLog(user?.id, selectedDateKey, draftText, nextLogs);
+    } catch (err) {
+      console.error("Sync error saving log:", err);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function persistInterview(newEntry, nextList) {
+    setInterviews(nextList);
+    setSyncing(true);
+    try {
+      await saveInterview(user?.id, newEntry, nextList);
+    } catch (err) {
+      console.error("Sync error saving interview:", err);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function deleteInterview(id, nextList) {
+    setInterviews(nextList);
+    setSyncing(true);
+    try {
+      if (supabase && user?.id) {
+        await supabase
+          .from("interviews")
+          .delete()
+          .eq("id", id);
+      } else {
+        const stringValue = JSON.stringify(nextList);
+        if (window.storage && typeof window.storage.set === "function") {
+          await window.storage.set("interview-log-data", stringValue, false);
+        } else {
+          localStorage.setItem("interview-log-data", stringValue);
+        }
+      }
+    } catch (err) {
+      console.error("Sync error deleting interview:", err);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  // Display initialization loader
+  if (!authInitialized || ( (user || useLocalMode) && !dataLoaded )) {
     return (
       <div style={appStyles.loadingScreen}>
         <div style={appStyles.spinner}></div>
-        <div style={appStyles.loadingText}>Initializing Career Hub...</div>
+        <div style={appStyles.loadingText}>
+          {!authInitialized ? "Initializing Career Hub..." : "Synchronizing with Supabase..."}
+        </div>
       </div>
     );
   }
@@ -91,12 +245,18 @@ export default function App() {
                 {user ? (
                   <>
                     <Cloud size={13} color="#4ADE80" />
-                    <span style={{ ...appStyles.statusText, color: "#4ADE80" }}>Cloud Connected</span>
+                    <span style={{ ...appStyles.statusText, color: "#4ADE80" }}>
+                      {syncing ? "Syncing..." : "Cloud Sync Active"}
+                    </span>
+                    {syncing && <RefreshCw size={10} style={{ animation: "spin 1s linear infinite", color: "#38D9C9" }} />}
                   </>
                 ) : (
                   <>
                     <CloudOff size={13} color="#F2A93B" />
-                    <span style={{ ...appStyles.statusText, color: "#F2A93B" }}>Local Storage Mode</span>
+                    <span style={{ ...appStyles.statusText, color: "#F2A93B" }}>
+                      {syncing ? "Saving..." : "Local Storage Mode"}
+                    </span>
+                    {syncing && <RefreshCw size={10} style={{ animation: "spin 1s linear infinite", color: "#F2A93B" }} />}
                   </>
                 )}
               </div>
@@ -138,7 +298,7 @@ export default function App() {
                   <button
                     key={t.id}
                     className="tab-btn"
-                    onClick={() => setTab(t.id)}
+                    onClick={() => handleTabChange(t.id)}
                     style={{
                       ...appStyles.tabBtn,
                       background: isActive ? "#F2A93B" : "#0E1626",
@@ -153,11 +313,41 @@ export default function App() {
               })}
             </div>
 
-            {/* Tab Panels */}
-            <TasksTab active={tab === "tasks"} userId={user?.id} />
-            <SkillsTab active={tab === "skills"} userId={user?.id} />
-            <LogTab active={tab === "log"} userId={user?.id} />
-            <InterviewsTab active={tab === "interviews"} userId={user?.id} />
+            {/* Tab Panels with Pre-Loaded Props */}
+            {tab === "tasks" && (
+              <TasksTab 
+                active={true} 
+                userId={user?.id}
+                tasksHistory={tasks}
+                onPersistTasks={persistTasks}
+              />
+            )}
+            {tab === "skills" && (
+              <SkillsTab 
+                active={true} 
+                userId={user?.id}
+                skills={skills}
+                onPersistSkill={persistSkill}
+              />
+            )}
+            {tab === "log" && (
+              <LogTab 
+                active={true} 
+                userId={user?.id}
+                logs={logs}
+                tasksHistory={tasks}
+                onPersistLog={persistLog}
+              />
+            )}
+            {tab === "interviews" && (
+              <InterviewsTab 
+                active={true} 
+                userId={user?.id}
+                interviews={interviews}
+                onPersistInterview={persistInterview}
+                onDeleteInterview={deleteInterview}
+              />
+            )}
           </>
         )}
       </div>
