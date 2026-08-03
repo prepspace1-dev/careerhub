@@ -51,6 +51,12 @@ export default function Auth({ onAuthSuccess, onSkipAuth }) {
 
   return (
     <div style={authStyles.container} className="fade-in">
+      {loading && (
+        <div style={authStyles.loadingOverlay}>
+          <div style={authStyles.spinner}></div>
+          <p style={authStyles.loadingText}>Connecting to Supabase...</p>
+        </div>
+      )}
       <div style={authStyles.header}>
         <div style={authStyles.logoRow}>
           <Sparkles size={20} color="#38D9C9" />
@@ -175,6 +181,36 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}
 const authStyles = {
   container: {
     padding: "10px 4px",
+  },
+  loadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: "rgba(10, 15, 28, 0.8)",
+    backdropFilter: "blur(6px)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
+    zIndex: 10,
+    borderRadius: 24,
+  },
+  spinner: {
+    width: 28,
+    height: 28,
+    borderRadius: "50%",
+    border: "3px solid #1C2842",
+    borderTopColor: "#38D9C9",
+    animation: "spin 0.8s linear infinite",
+  },
+  loadingText: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 12,
+    color: "#38D9C9",
+    fontWeight: 600,
   },
   header: {
     textAlign: "center",
