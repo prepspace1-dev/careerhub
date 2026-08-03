@@ -646,3 +646,32 @@ const appStyles = {
     border: "1px solid"
   }
 };
+
+const styles = {
+  loading: { minHeight: 200, display: "flex", alignItems: "center", justifyContent: "center", color: "#8493AA", fontFamily: "'IBM Plex Mono', monospace" },
+  header: { marginBottom: 10 },
+  eyebrowRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6 },
+  eyebrow: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: 2, color: "#5D8DC1" },
+  syncIndicator: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 9, color: "#38D9C9", background: "rgba(56, 217, 201, 0.1)", padding: "2px 6px", borderRadius: 4 },
+  title: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 19, fontWeight: 600, color: "#E7EDF5", margin: "0 0 6px" },
+  editorBox: { background: "#0E1626", border: "1px solid #1C2842", borderRadius: 14, padding: "16px 16px 14px", display: "flex", flexDirection: "column", gap: 10 },
+  editorHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 },
+  editorDate: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: "#E7EDF5", display: "flex", alignItems: "center" },
+  todayTag: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 9, color: "#0A0F1C", background: "#F2A93B", borderRadius: 4, padding: "2px 6px", letterSpacing: 0.5, marginLeft: 8 },
+  todayTagSmall: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 8, color: "#0A0F1C", background: "#F2A93B", borderRadius: 4, padding: "1px 5px", marginLeft: 8 },
+  textarea: { width: "100%", background: "#121A2B", border: "1px solid #1C2842", borderRadius: 10, color: "#E7EDF5", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13.5, lineHeight: 1.6, padding: "12px 14px", resize: "vertical", outline: "none" },
+  saveBar: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 },
+  saveBtn: { display: "flex", alignItems: "center", justifyContent: "center", gap: 7, color: "#0A0F1C", border: "none", borderRadius: 8, padding: "9px 16px", fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 12, cursor: "pointer", boxShadow: "0 4px 12px rgba(242, 169, 59, 0.15)" },
+  divider: { height: 1, background: "#1C2842", margin: "18px 0 14px" },
+  historySection: { display: "flex", flexDirection: "column", gap: 12 },
+  sectionLabel: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, letterSpacing: 1.5, color: "#5D8DC1" },
+  searchWrapper: { position: "relative", width: "180px" },
+  searchIcon: { position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#5D8DC1" },
+  searchInput: { width: "100%", background: "#0E1626", border: "1px solid #1C2842", borderRadius: 6, color: "#E7EDF5", fontSize: 11.5, padding: "4px 8px 4px 26px", outline: "none", fontFamily: "'IBM Plex Sans', sans-serif" },
+  stageFilterDropdown: { background: "#0E1626", border: "1px solid #1C2842", borderRadius: 8, color: "#E7EDF5", fontSize: 13, padding: "8px 10px", outline: "none", fontFamily: "'IBM Plex Sans', sans-serif" },
+  emptyState: { fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, color: "#5D8DC1", fontStyle: "italic", textAlign: "center", padding: "16px 0" },
+  historyList: { display: "flex", flexDirection: "column", gap: 10 },
+  historyItem: { textAlign: "left", border: "1px solid", borderRadius: 10, padding: "12px 14px", width: "100%", cursor: "pointer", transition: "all 0.15s ease" },
+  historyDate: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: "#F2A93B", marginBottom: 6, display: "flex", alignItems: "center" },
+  historyText: { fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, color: "#C7D2E0", lineHeight: 1.5, whiteSpace: "pre-wrap" }
+};
