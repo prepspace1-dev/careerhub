@@ -67,28 +67,38 @@ export default function App() {
 
   const hasSupabase = isSupabaseConfigured();
 
-  // Hash-based Routing
+  // Path-based Routing (e.g. /overview, /tasks, /projects)
   useEffect(() => {
-    const handleHashChange = () => {
-      const currentHash = window.location.hash.replace("#", "");
-      const validTabs = ["overview", "tasks", "skills", "roadmaps", "problems", "companies", "projects", "log", "interviews"];
-      if (validTabs.includes(currentHash)) {
-        setTab(currentHash);
-      } else {
-        // Fallback default
-        setTab("overview");
-        window.location.hash = "#overview";
+    const validTabs = ["overview", "tasks", "skills", "roadmaps", "problems", "companies", "projects", "log", "interviews"];
+
+    const handleRouteChange = () => {
+      const path = window.location.pathname.replace(/^\/+/, "").split("/")[0];
+      const hash = window.location.hash.replace("#", "");
+
+      let targetTab = "overview";
+      if (validTabs.includes(path)) {
+        targetTab = path;
+      } else if (validTabs.includes(hash)) {
+        targetTab = hash;
+      }
+
+      setTab(targetTab);
+
+      // Normalize URL to clean path without hash (e.g. /overview)
+      if (window.location.pathname !== `/${targetTab}` || window.location.hash) {
+        window.history.replaceState({}, "", `/${targetTab}`);
       }
     };
 
-    window.addEventListener("hashchange", handleHashChange);
-    handleHashChange(); // Run on mount
+    window.addEventListener("popstate", handleRouteChange);
+    handleRouteChange(); // Run on mount
 
-    return () => window.removeEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("popstate", handleRouteChange);
   }, []);
 
   const handleTabChange = (newTab) => {
-    window.location.hash = `#${newTab}`;
+    setTab(newTab);
+    window.history.pushState({}, "", `/${newTab}`);
   };
 
   // Listen to Supabase Auth State

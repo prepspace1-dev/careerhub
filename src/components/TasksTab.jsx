@@ -213,11 +213,17 @@ export default function TasksTab({
     }
   }
 
-  const doneCount = tasks.filter((t) => selectedData[t.id]).length;
-  const allDone = doneCount === tasks.length;
-
   const currentDsaCount = selectedData.dsaCount !== undefined ? selectedData.dsaCount : solvedProblemsDate.length;
   const currentAppsCount = selectedData.appsCount !== undefined ? selectedData.appsCount : applicationsDate.length;
+
+  const isTaskDone = (taskId) => {
+    if (taskId === "dsa") return currentDsaCount >= DSA_TARGET || !!selectedData.dsa;
+    if (taskId === "apps") return currentAppsCount >= APPS_TARGET || !!selectedData.apps;
+    return !!selectedData[taskId];
+  };
+
+  const doneCount = tasks.filter((t) => isTaskDone(t.id)).length;
+  const allDone = doneCount === tasks.length;
 
   return (
     <div style={{ display: active ? "block" : "none" }} className="fade-in">
@@ -279,7 +285,7 @@ export default function TasksTab({
       {/* Task Items */}
       <div style={styles.taskList}>
         {tasks.map((task, i) => {
-          const done = !!selectedData[task.id];
+          const done = isTaskDone(task.id);
           const isLast = i === tasks.length - 1;
 
           return (
@@ -290,8 +296,9 @@ export default function TasksTab({
                   aria-pressed={done}
                   style={{
                     ...styles.node,
-                    background: done ? "#F2A93B" : "#121A2B",
-                    borderColor: done ? "#F2A93B" : "#2A3448",
+                    background: done ? "#4ADE80" : "#121A2B",
+                    borderColor: done ? "#4ADE80" : "#2A3448",
+                    boxShadow: done ? "0 0 12px rgba(74, 222, 128, 0.4)" : "none",
                     cursor: "pointer",
                   }}
                 >
@@ -301,7 +308,8 @@ export default function TasksTab({
                   <div
                     style={{
                       ...styles.trace,
-                      background: done ? "#F2A93B" : "#2A3448",
+                      background: done ? "#4ADE80" : "#2A3448",
+                      boxShadow: done ? "0 0 8px rgba(74, 222, 128, 0.3)" : "none",
                     }}
                   />
                 )}
@@ -311,13 +319,29 @@ export default function TasksTab({
                 <div style={styles.taskLabelRow}>
                   <div style={styles.taskLabel}>{task.label}</div>
                   {task.id === "dsa" && (
-                    <span style={styles.targetBadge}>
-                      {currentDsaCount}/{DSA_TARGET} Solved
+                    <span
+                      style={{
+                        ...styles.targetBadge,
+                        background: currentDsaCount >= DSA_TARGET ? "rgba(74, 222, 128, 0.15)" : "rgba(56, 217, 201, 0.12)",
+                        borderColor: currentDsaCount >= DSA_TARGET ? "rgba(74, 222, 128, 0.4)" : "rgba(56, 217, 201, 0.3)",
+                        color: currentDsaCount >= DSA_TARGET ? "#4ADE80" : "#38D9C9",
+                        fontWeight: currentDsaCount >= DSA_TARGET ? 700 : 600,
+                      }}
+                    >
+                      {currentDsaCount >= DSA_TARGET ? `✓ ${currentDsaCount}/${DSA_TARGET} Solved` : `${currentDsaCount}/${DSA_TARGET} Solved`}
                     </span>
                   )}
                   {task.id === "apps" && (
-                    <span style={styles.targetBadge}>
-                      {currentAppsCount}/{APPS_TARGET} Applied
+                    <span
+                      style={{
+                        ...styles.targetBadge,
+                        background: currentAppsCount >= APPS_TARGET ? "rgba(74, 222, 128, 0.15)" : "rgba(56, 217, 201, 0.12)",
+                        borderColor: currentAppsCount >= APPS_TARGET ? "rgba(74, 222, 128, 0.4)" : "rgba(56, 217, 201, 0.3)",
+                        color: currentAppsCount >= APPS_TARGET ? "#4ADE80" : "#38D9C9",
+                        fontWeight: currentAppsCount >= APPS_TARGET ? 700 : 600,
+                      }}
+                    >
+                      {currentAppsCount >= APPS_TARGET ? `✓ ${currentAppsCount}/${APPS_TARGET} Applied` : `${currentAppsCount}/${APPS_TARGET} Applied`}
                     </span>
                   )}
                 </div>
