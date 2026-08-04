@@ -25,7 +25,7 @@ export default function SkillsTab({
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
 
-  // State to track collapsed status for each category (default: all expanded)
+  // State to track collapsed status for each category (default: all collapsed until user toggles)
   const [collapsed, setCollapsed] = useState({});
 
   if (!active) return null;
@@ -34,7 +34,10 @@ export default function SkillsTab({
 
   function toggleCategory(catId, e) {
     if (e) e.stopPropagation();
-    setCollapsed(prev => ({ ...prev, [catId]: !prev[catId] }));
+    setCollapsed(prev => {
+      const isCurrentlyCollapsed = prev[catId] === undefined ? true : prev[catId];
+      return { ...prev, [catId]: !isCurrentlyCollapsed };
+    });
   }
 
   function openTopic(topic, category) {
@@ -129,7 +132,7 @@ export default function SkillsTab({
       {/* Category Accordion / Tree */}
       <div style={s.tree}>
         {Object.values(TOPICS).map(category => {
-          const isCollapsed = !!collapsed[category.id];
+          const isCollapsed = collapsed[category.id] === undefined ? true : collapsed[category.id];
           const isDSA = category.id === "dsa";
 
           // Calculate completed items for header

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { LayoutDashboard, ListChecks, BookOpen, Database, Map, Building2, FolderKanban, NotebookPen, Briefcase, LogOut, Cloud, CloudOff, User, RefreshCw, Award } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { LayoutDashboard, ListChecks, BookOpen, Database, Map, Building2, FolderKanban, Briefcase, LogOut, Cloud, CloudOff, User, RefreshCw, Award } from "lucide-react";
 import OverviewTab from "./components/OverviewTab";
 import TasksTab from "./components/TasksTab";
 import SkillsTab from "./components/SkillsTab";
@@ -7,8 +7,10 @@ import ProblemVault from "./components/ProblemVault";
 import RoadmapsTab from "./components/RoadmapsTab";
 import CompanyPacksTab from "./components/CompanyPacksTab";
 import ProjectsTab from "./components/ProjectsTab";
-import LogTab from "./components/LogTab";
 import InterviewsTab from "./components/InterviewsTab";
+import ProfileTab from "./components/ProfileTab";
+import ConfirmDeleteModal from "./components/ConfirmDeleteModal";
+import Toast from "./components/Toast";
 import Auth from "./components/Auth";
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
 import { 
@@ -29,10 +31,13 @@ import {
   fetchProjects,
   saveProject,
   deleteProject,
+  fetchProfile,
+  saveProfile,
+  fetchTrash,
+  saveTrash,
   fetchXPEvents
-  // Phase 3+: fetchRevisionQueue, addXPEvent, getTotalXP, completeRevision
 } from "./db";
-import { DEFAULT_SKILLS } from "./utils";
+import { DEFAULT_SKILLS, generateUUID } from "./utils";
 
 const TABS = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -42,7 +47,6 @@ const TABS = [
   { id: "problems", label: "Problem Vault", icon: Database },
   { id: "companies", label: "Company Packs", icon: Building2 },
   { id: "projects", label: "Projects", icon: FolderKanban },
-  { id: "log", label: "Log", icon: NotebookPen },
   { id: "interviews", label: "Interviews", icon: Briefcase },
 ];
 
@@ -61,15 +65,21 @@ export default function App() {
   const [problems, setProblems] = useState([]);
   const [roadmapItems, setRoadmapItems] = useState({});
   const [projects, setProjects] = useState([]);
+  const [profile, setProfile] = useState({});
+  const [trash, setTrash] = useState([]);
   const [_xpEvents, setXpEvents] = useState([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
+
+  // Soft Delete & UI Prompt States
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, item: null, type: "", title: "", onConfirmAction: null });
+  const [toast, setToast] = useState(null);
 
   const hasSupabase = isSupabaseConfigured();
 
   // Path-based Routing (e.g. /overview, /tasks, /projects)
   useEffect(() => {
-    const validTabs = ["overview", "tasks", "skills", "roadmaps", "problems", "companies", "projects", "log", "interviews"];
+    const validTabs = ["overview", "tasks", "skills", "roadmaps", "problems", "companies", "projects", "interviews", "profile"];
 
     const handleRouteChange = () => {
       const path = window.location.pathname.replace(/^\/+/, "").split("/")[0];
@@ -101,6 +111,8 @@ export default function App() {
     window.history.pushState({}, "", `/${newTab}`);
   };
 
+  const hasInitiallyLoaded = useRef(false);
+
   // Listen to Supabase Auth State
   useEffect(() => {
     if (!hasSupabase) {
@@ -108,26 +120,17 @@ export default function App() {
       return;
     }
 
-    // Get current session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        migrateLocalDataToSupabase(session.user.id).then(() => {
-          loadAllUserData(session.user.id);
-        });
-      } else {
-        setAuthInitialized(true);
-      }
-    });
-
-    // Listen to changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         setUser(session.user);
-        await migrateLocalDataToSupabase(session.user.id);
-        await loadAllUserData(session.user.id);
+        const isSilentRefresh = hasInitiallyLoaded.current;
+        if (!isSilentRefresh) {
+          await migrateLocalDataToSupabase(session.user.id);
+        }
+        await loadAllUserData(session.user.id, isSilentRefresh);
       } else {
         setUser(null);
+        hasInitiallyLoaded.current = false;
         setDataLoaded(false);
       }
       setAuthInitialized(true);
@@ -141,15 +144,20 @@ export default function App() {
   // Load data for guest / offline mode
   useEffect(() => {
     if (useLocalMode || !hasSupabase) {
-      loadAllUserData(null);
+      loadAllUserData(null, hasInitiallyLoaded.current);
     }
   }, [useLocalMode, hasSupabase]);
 
-  // Parallel Loader for User Data
-  async function loadAllUserData(userId) {
-    setDataLoaded(false);
+  // Parallel Loader for User Data with Silent Background Refresh support
+  async function loadAllUserData(userId, isSilent = false) {
+    if (!isSilent && !hasInitiallyLoaded.current) {
+      setDataLoaded(false);
+    } else {
+      setSyncing(true);
+    }
+
     try {
-      const [tasksData, skillsData, logsData, interviewsData, problemsData, roadmapData, projectsData, xpData] = await Promise.all([
+      const [tasksData, skillsData, logsData, interviewsData, problemsData, roadmapData, projectsData, profileData, trashData, xpData] = await Promise.all([
         fetchTasks(userId),
         fetchSkills(userId, DEFAULT_SKILLS),
         fetchLogs(userId),
@@ -157,6 +165,8 @@ export default function App() {
         fetchProblems(userId),
         fetchRoadmapItems(userId),
         fetchProjects(userId),
+        fetchProfile(userId),
+        fetchTrash(userId),
         fetchXPEvents(userId),
       ]);
       
@@ -167,11 +177,15 @@ export default function App() {
       setProblems(problemsData || []);
       setRoadmapItems(roadmapData || {});
       setProjects(projectsData || []);
+      setProfile(profileData || {});
+      setTrash(trashData || []);
       setXpEvents(xpData || []);
+      hasInitiallyLoaded.current = true;
     } catch (err) {
       console.error("Error loading application data:", err);
     } finally {
       setDataLoaded(true);
+      setSyncing(false);
     }
   }
 
@@ -211,17 +225,7 @@ export default function App() {
     }
   }
 
-  async function persistLog(selectedDateKey, draftText, nextLogs) {
-    setLogs(nextLogs);
-    setSyncing(true);
-    try {
-      await saveLog(user?.id, selectedDateKey, draftText, nextLogs);
-    } catch (err) {
-      console.error("Sync error saving log:", err);
-    } finally {
-      setSyncing(false);
-    }
-  }
+
 
   async function persistInterview(newEntry, nextList) {
     setInterviews(nextList);
@@ -358,6 +362,141 @@ export default function App() {
     }
   }
 
+  // Profile & Preferences Persist
+  async function persistProfile(profileData) {
+    setProfile(profileData);
+    setSyncing(true);
+    try {
+      await saveProfile(user?.id, profileData);
+    } catch (err) {
+      console.error("Sync error saving profile:", err);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  // Request Soft Delete (opens confirmation modal)
+  function requestSoftDelete(item, type, title, performDeleteFn) {
+    setConfirmModal({
+      isOpen: true,
+      item,
+      type,
+      title: title || item.title || item.company || "Item",
+      onConfirmAction: () => executeSoftDelete(item, type, title || item.title || item.company || "Item", performDeleteFn),
+    });
+  }
+
+  // Execute Soft Delete (moves item to trash & shows Toast with Undo)
+  async function executeSoftDelete(item, type, title, performDeleteFn) {
+    setConfirmModal({ isOpen: false, item: null, type: "", title: "", onConfirmAction: null });
+
+    const trashEntry = {
+      id: generateUUID(),
+      original_id: item.id,
+      item_type: type,
+      title: title || item.title || item.company || "Deleted item",
+      data: item,
+      deleted_at: new Date().toISOString(),
+    };
+
+    const nextTrash = [trashEntry, ...trash];
+    setTrash(nextTrash);
+    performDeleteFn(item.id);
+
+    // Show Undo Toast
+    setToast({
+      message: `Moved "${trashEntry.title}" to Recycle Bin`,
+      canUndo: true,
+      lastTrashItem: trashEntry,
+    });
+
+    try {
+      await saveTrash(user?.id, nextTrash);
+    } catch (err) {
+      console.error("Sync error saving trash:", err);
+    }
+  }
+
+  // 1-Click Undo Toast Handler
+  async function handleUndoToast() {
+    if (!toast || !toast.lastTrashItem) return;
+    const itemToRestore = toast.lastTrashItem;
+    setToast(null);
+    await restoreFromTrash(itemToRestore.id);
+  }
+
+  // Restore item from Trash back to active dataset
+  async function restoreFromTrash(trashId) {
+    const targetItem = trash.find((t) => t.id === trashId);
+    if (!targetItem) return;
+
+    const nextTrash = trash.filter((t) => t.id !== trashId);
+    setTrash(nextTrash);
+
+    const type = targetItem.item_type || targetItem.itemType;
+    const origData = targetItem.data;
+
+    if (type === "problem") {
+      const nextProblems = [origData, ...problems.filter(p => p.id !== origData.id)];
+      setProblems(nextProblems);
+      await saveProblem(user?.id, origData, nextProblems);
+    } else if (type === "interview") {
+      const nextInterviews = [origData, ...interviews.filter(i => i.id !== origData.id)];
+      setInterviews(nextInterviews);
+      await saveInterview(user?.id, origData, nextInterviews);
+    } else if (type === "project") {
+      const nextProjects = [origData, ...projects.filter(p => p.id !== origData.id)];
+      setProjects(nextProjects);
+      await saveProject(user?.id, origData, nextProjects);
+    } else if (type === "log") {
+      const dateKey = origData.date;
+      const text = origData.entry || origData.text;
+      const nextLogs = { ...logs, [dateKey]: text };
+      setLogs(nextLogs);
+      await saveLog(user?.id, dateKey, text, nextLogs);
+    }
+
+    try {
+      await saveTrash(user?.id, nextTrash);
+    } catch (err) {
+      console.error("Sync error updating trash:", err);
+    }
+  }
+
+  // Delete Permanently from Trash
+  async function permanentDeleteFromTrash(trashId) {
+    const nextTrash = trash.filter((t) => t.id !== trashId);
+    setTrash(nextTrash);
+    try {
+      await saveTrash(user?.id, nextTrash);
+    } catch (err) {
+      console.error("Sync error purging trash item:", err);
+    }
+  }
+
+  // Empty Trash
+  async function emptyTrashAll() {
+    setTrash([]);
+    try {
+      await saveTrash(user?.id, []);
+    } catch (err) {
+      console.error("Sync error emptying trash:", err);
+    }
+  }
+
+  // Import Full App Backup JSON
+  async function handleImportAppData(importedData) {
+    if (!importedData) return;
+    if (importedData.tasks) setTasks(importedData.tasks);
+    if (importedData.problems) setProblems(importedData.problems);
+    if (importedData.interviews) setInterviews(importedData.interviews);
+    if (importedData.projects) setProjects(importedData.projects);
+    if (importedData.logs) setLogs(importedData.logs);
+    if (importedData.roadmapItems) setRoadmapItems(importedData.roadmapItems);
+    if (importedData.profile) setProfile(importedData.profile);
+    if (importedData.trash) setTrash(importedData.trash);
+  }
+
   // Display initialization loader
   if (!authInitialized || ( (user || useLocalMode) && !dataLoaded )) {
     return (
@@ -435,17 +574,40 @@ export default function App() {
             {/* User Profile & Logout footer */}
             <div style={appStyles.sidebarFooter}>
               {user ? (
-                <div style={appStyles.userBox}>
-                  <div style={appStyles.userAvatar}>
-                    <User size={12} color="#8493AA" />
+                <div 
+                  style={{
+                    ...appStyles.userBox,
+                    cursor: "pointer",
+                    borderColor: tab === "profile" ? "#38D9C9" : "#1E293B",
+                    background: tab === "profile" ? "rgba(56, 217, 201, 0.12)" : "rgba(18, 26, 43, 0.6)",
+                    transition: "all 0.2s ease",
+                  }}
+                  onClick={() => handleTabChange("profile")}
+                  title="Click to open Profile, Settings & Recycle Bin"
+                >
+                  <div style={{
+                    ...appStyles.userAvatar,
+                    background: tab === "profile" ? "rgba(56, 217, 201, 0.2)" : appStyles.userAvatar.background,
+                  }}>
+                    <User size={12} color={tab === "profile" ? "#38D9C9" : "#8493AA"} />
                   </div>
                   <div style={appStyles.userMeta}>
-                    <span style={appStyles.userEmailText} title={user.email}>
-                      {user.email}
+                    <span 
+                      style={{ 
+                        ...appStyles.userEmailText, 
+                        color: tab === "profile" ? "#38D9C9" : "#E7EDF5",
+                        fontWeight: tab === "profile" ? 700 : 500,
+                      }} 
+                      title={user.email}
+                    >
+                      {profile.name || user.email}
                     </span>
                   </div>
                   <button 
-                    onClick={handleLogout} 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleLogout();
+                    }} 
                     style={appStyles.logoutBtn} 
                     title="Log Out"
                   >
@@ -453,14 +615,29 @@ export default function App() {
                   </button>
                 </div>
               ) : (
-                hasSupabase && (
-                  <button 
-                    onClick={() => setUseLocalMode(false)} 
-                    style={appStyles.loginBtnSidebar}
-                  >
-                    Connect Account
-                  </button>
-                )
+                <div 
+                  style={{
+                    ...appStyles.userBox,
+                    cursor: "pointer",
+                    borderColor: tab === "profile" ? "#38D9C9" : "#1E293B",
+                    background: tab === "profile" ? "rgba(56, 217, 201, 0.12)" : "rgba(18, 26, 43, 0.6)",
+                    transition: "all 0.2s ease",
+                  }}
+                  onClick={() => handleTabChange("profile")}
+                  title="Click to open Profile, Settings & Recycle Bin"
+                >
+                  <div style={{
+                    ...appStyles.userAvatar,
+                    background: tab === "profile" ? "rgba(56, 217, 201, 0.2)" : appStyles.userAvatar.background,
+                  }}>
+                    <User size={12} color={tab === "profile" ? "#38D9C9" : "#8493AA"} />
+                  </div>
+                  <div style={appStyles.userMeta}>
+                    <span style={{ ...appStyles.userEmailText, color: tab === "profile" ? "#38D9C9" : "#E7EDF5" }}>
+                      {profile.name || "Guest Candidate"}
+                    </span>
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -473,7 +650,7 @@ export default function App() {
                 tasksHistory={tasks}
                 skills={skills}
                 interviews={interviews}
-                logs={logs}
+                projects={projects}
                 problems={problems}
                 roadmapItems={roadmapItems}
                 onNavigateToTab={handleTabChange}
@@ -495,7 +672,10 @@ export default function App() {
                 problems={problems}
                 roadmapItems={roadmapItems}
                 onPersistProblem={persistProblem}
-                onDeleteProblem={deleteProblemEntry}
+                onDeleteProblem={(id) => {
+                  const p = problems.find((x) => x.id === id);
+                  if (p) requestSoftDelete(p, "problem", p.title, deleteProblemEntry);
+                }}
                 onPersistRoadmapItem={persistRoadmapItem}
               />
             )}
@@ -511,7 +691,10 @@ export default function App() {
                 active={true}
                 problems={problems}
                 onPersistProblem={persistProblem}
-                onDeleteProblem={deleteProblemEntry}
+                onDeleteProblem={(id) => {
+                  const p = problems.find((x) => x.id === id);
+                  if (p) requestSoftDelete(p, "problem", p.title, deleteProblemEntry);
+                }}
               />
             )}
             {tab === "companies" && (
@@ -525,15 +708,10 @@ export default function App() {
                 active={true}
                 projects={projects}
                 onPersistProject={persistProject}
-                onDeleteProject={deleteProjectEntry}
-              />
-            )}
-            {tab === "log" && (
-              <LogTab 
-                active={true} 
-                logs={logs}
-                tasksHistory={tasks}
-                onPersistLog={persistLog}
+                onDeleteProject={(id) => {
+                  const pr = projects.find((x) => x.id === id);
+                  if (pr) requestSoftDelete(pr, "project", pr.title, deleteProjectEntry);
+                }}
               />
             )}
             {tab === "interviews" && (
@@ -541,12 +719,57 @@ export default function App() {
                 active={true} 
                 interviews={interviews}
                 onPersistInterview={persistInterview}
-                onDeleteInterview={deleteInterview}
+                onDeleteInterview={(id) => {
+                  const inv = interviews.find((x) => x.id === id);
+                  if (inv) requestSoftDelete(inv, "interview", inv.company, deleteInterview);
+                }}
+              />
+            )}
+            {tab === "profile" && (
+              <ProfileTab
+                active={true}
+                user={user}
+                profile={profile}
+                onSaveProfile={persistProfile}
+                trash={trash}
+                onRestoreFromTrash={restoreFromTrash}
+                onPermanentDeleteFromTrash={permanentDeleteFromTrash}
+                onEmptyTrash={emptyTrashAll}
+                fullAppData={{
+                  tasks,
+                  skills,
+                  logs,
+                  interviews,
+                  problems,
+                  roadmapItems,
+                  projects,
+                  profile,
+                  trash,
+                }}
+                onImportAppData={handleImportAppData}
               />
             )}
           </div>
         </div>
       )}
+
+      {/* Soft Delete Confirmation Modal */}
+      <ConfirmDeleteModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal({ isOpen: false, item: null, type: "", title: "", onConfirmAction: null })}
+        onConfirm={() => {
+          if (confirmModal.onConfirmAction) confirmModal.onConfirmAction();
+        }}
+        title={confirmModal.title}
+        itemType={confirmModal.type}
+      />
+
+      {/* Undo Toast Notification */}
+      <Toast
+        toast={toast}
+        onUndo={handleUndoToast}
+        onClose={() => setToast(null)}
+      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React from "react";
-import { Zap, Briefcase, Award, TrendingUp, Calendar, ArrowRight, Clipboard, Star, Map, Database, Building2, BookOpen, FolderKanban } from "lucide-react";
+import { Zap, Briefcase, Award, TrendingUp, Calendar, ArrowRight, Star, Map, Database, Building2, BookOpen, FolderKanban } from "lucide-react";
 import { niceDate } from "../utils";
 import { ROADMAPS } from "../data/roadmaps";
 
@@ -7,14 +7,13 @@ export default function OverviewTab({
   active,
   tasksHistory,
   interviews,
-  logs,
+  projects = [],
   problems = [],
   roadmapItems = {},
   onNavigateToTab,
 }) {
   const history = tasksHistory || {};
   const interviewList = interviews || [];
-  const logEntries = logs || {};
 
   // 1. Calculate Streak
   const streak = (() => {
@@ -122,15 +121,6 @@ export default function OverviewTab({
   };
 
   const todayFocus = getDailyFocus();
-
-  // 6. Recent Logs Preview
-  const recentLogs = Object.keys(logEntries)
-    .sort((a, b) => b.localeCompare(a))
-    .slice(0, 2)
-    .map((key) => ({
-      date: key,
-      text: logEntries[key],
-    }));
 
   return (
     <div style={{ display: active ? "block" : "none" }} className="fade-in">
@@ -254,32 +244,38 @@ export default function OverviewTab({
         </div>
       </div>
 
-      {/* Recent Worklogs */}
+      {/* Portfolio Projects Studio */}
       <div style={styles.cardBox}>
         <div style={styles.cardHeader}>
-          <Clipboard size={16} color="var(--blue)" />
-          <h2 style={styles.cardTitle}>Recent Dev Logs</h2>
+          <FolderKanban size={16} color="#38D9C9" />
+          <h2 style={styles.cardTitle}>Portfolio Projects Studio</h2>
         </div>
         <div style={styles.logsBody}>
-          {recentLogs.length > 0 ? (
+          {projects.length > 0 ? (
             <div style={styles.logsList}>
-              {recentLogs.map((log) => (
-                <div key={log.date} style={styles.logItem}>
-                  <span style={styles.logDate}>{niceDate(log.date)}</span>
-                  <p style={styles.logText}>
-                    {log.text.replace(/#tags:\s*.*\n*/g, "").substring(0, 100)}
-                    {log.text.length > 100 ? "..." : ""}
+              {projects.slice(0, 2).map((proj) => (
+                <div key={proj.id} style={styles.logItem}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, color: "#E7EDF5", fontSize: 13 }}>
+                      {proj.title}
+                    </span>
+                    <span style={{ fontSize: 10, color: "#38D9C9", background: "rgba(56, 217, 201, 0.12)", padding: "2px 8px", borderRadius: 10 }}>
+                      {proj.phase || "Building"}
+                    </span>
+                  </div>
+                  <p style={{ ...styles.logText, marginTop: 4 }}>
+                    {proj.tagline || proj.category || "SDE Portfolio Project"}
                   </p>
                 </div>
               ))}
             </div>
           ) : (
-            <div style={styles.emptyState}>No logs written yet for this period.</div>
+            <div style={styles.emptyState}>No portfolio projects added yet.</div>
           )}
         </div>
         <div style={styles.cardActions}>
-          <button onClick={() => onNavigateToTab("log")} style={styles.actionBtn}>
-            Open Logs <ArrowRight size={12} />
+          <button onClick={() => onNavigateToTab("projects")} style={styles.actionBtn}>
+            Projects Studio <ArrowRight size={12} />
           </button>
         </div>
       </div>

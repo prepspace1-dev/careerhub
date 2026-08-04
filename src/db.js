@@ -316,6 +316,86 @@ export async function deleteProject(userId, projectId, fullProjects) {
   }
 }
 
+/* ---------------- PROFILE STORAGE ---------------- */
+
+export async function fetchProfile(userId) {
+  if (supabase && userId) {
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error fetching profile from Supabase:", error);
+    }
+    if (data) return data;
+  }
+  const data = await storage.get("portfolio-profile-data", true);
+  return data && typeof data === "object" ? data : {};
+}
+
+export async function saveProfile(userId, profileData) {
+  if (supabase && userId) {
+    const { error } = await supabase
+      .from("user_profiles")
+      .upsert({
+        user_id: userId,
+        name: profileData.name || "",
+        target_role: profileData.target_role || profileData.targetRole || "SDE Candidate",
+        github: profileData.github || "",
+        linkedin: profileData.linkedin || "",
+        leetcode: profileData.leetcode || "",
+        portfolio_url: profileData.portfolio_url || profileData.portfolioUrl || "",
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id" });
+
+    if (error) {
+      console.error("Error saving profile to Supabase:", error);
+    }
+  }
+  await storage.set("portfolio-profile-data", profileData);
+}
+
+/* ---------------- TRASH / RECYCLE BIN STORAGE ---------------- */
+
+export async function fetchTrash(userId) {
+  if (supabase && userId) {
+    const { data, error } = await supabase
+      .from("trash_bin")
+      .select("*")
+      .eq("user_id", userId)
+      .order("deleted_at", { ascending: false });
+
+    if (!error && data) return data;
+  }
+  const data = await storage.get("portfolio-trash-data", true);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function saveTrash(userId, fullTrash) {
+  if (supabase && userId && Array.isArray(fullTrash)) {
+    try {
+      // Upsert rows
+      const rows = fullTrash.map((item) => ({
+        id: item.id,
+        user_id: userId,
+        item_type: item.item_type || item.itemType,
+        title: item.title,
+        data: item.data,
+        deleted_at: item.deleted_at || item.deletedAt || new Date().toISOString(),
+      }));
+
+      if (rows.length > 0) {
+        await supabase.from("trash_bin").upsert(rows);
+      }
+    } catch (e) {
+      console.error("Sync error saving trash to Supabase:", e);
+    }
+  }
+  await storage.set("portfolio-trash-data", fullTrash);
+}
+
 /* ---------------- DATA MIGRATION ON LOGIN ---------------- */
 
 export async function migrateLocalDataToSupabase(userId) {

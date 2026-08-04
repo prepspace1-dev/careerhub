@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X, FolderGit2, Sparkles, Layers, Globe, GitBranch, Cpu, FileText } from "lucide-react";
 import { generateUUID } from "../utils";
 
@@ -78,7 +79,7 @@ export default function AddProjectModal({
     onClose();
   }
 
-  return (
+  return createPortal(
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
@@ -255,24 +256,30 @@ export default function AddProjectModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
 const styles = {
   overlay: {
     position: "fixed",
+    inset: 0,
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    background: "rgba(5, 10, 20, 0.82)",
-    backdropFilter: "blur(8px)",
+    width: "100vw",
+    height: "100vh",
+    background: "rgba(5, 10, 20, 0.88)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+    zIndex: 99999,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 1000,
-    padding: 20,
+    padding: "20px",
+    overflowY: "auto",
   },
   modal: {
     background: "#0B132B",
@@ -280,10 +287,11 @@ const styles = {
     borderRadius: 16,
     width: "100%",
     maxWidth: 680,
-    maxHeight: "90vh",
+    maxHeight: "85vh",
     overflowY: "auto",
     padding: 24,
-    boxShadow: "0 20px 50px rgba(0, 0, 0, 0.6)",
+    boxShadow: "0 24px 60px rgba(0, 0, 0, 0.8)",
+    margin: "auto 0",
   },
   header: {
     display: "flex",
