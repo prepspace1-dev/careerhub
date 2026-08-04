@@ -273,29 +273,36 @@ export async function fetchProjects(userId) {
 }
 
 export async function saveProject(userId, project, fullProjects) {
-  // Always persist to local storage immediately so page refresh never loses data
-  await storage.set("portfolio-projects-data", fullProjects);
+  const projectWithId = {
+    ...project,
+    id: (project.id && project.id.length > 20) ? project.id : generateUUID()
+  };
+
+  const updatedProjects = (fullProjects || []).map(p => (p.id === project.id || p.title === project.title) ? projectWithId : p);
+
+  // Always persist to local storage cache immediately
+  await storage.set("portfolio-projects-data", updatedProjects);
 
   if (supabase && userId) {
     try {
       const { error } = await supabase
         .from("projects")
         .upsert({
-          id: project.id || undefined,
+          id: projectWithId.id,
           user_id: userId,
-          title: project.title,
-          tagline: project.tagline || "",
-          phase: project.phase || "Idea",
-          category: project.category || "",
-          tech_stack: project.tech_stack || project.techStack || "",
-          github_url: project.github_url || project.githubUrl || "",
-          demo_url: project.demo_url || project.demoUrl || "",
-          architecture_notes: project.architecture_notes || project.architectureNotes || "",
-          star_pitch: project.star_pitch || project.starPitch || "",
+          title: projectWithId.title,
+          tagline: projectWithId.tagline || "",
+          phase: projectWithId.phase || "Idea",
+          category: projectWithId.category || "",
+          tech_stack: projectWithId.tech_stack || projectWithId.techStack || "",
+          github_url: projectWithId.github_url || projectWithId.githubUrl || "",
+          demo_url: projectWithId.demo_url || projectWithId.demoUrl || "",
+          architecture_notes: projectWithId.architecture_notes || projectWithId.architectureNotes || "",
+          star_pitch: projectWithId.star_pitch || projectWithId.starPitch || "",
         });
 
       if (error) {
-        console.error("Error saving project to Supabase:", error);
+        console.error("Error saving project directly to Supabase cloud:", error);
       }
     } catch (err) {
       console.error("Supabase saveProject exception:", err);
