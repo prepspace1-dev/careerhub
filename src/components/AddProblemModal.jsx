@@ -1,21 +1,39 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X, Star, AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
 import { ALL_SUBTOPICS, PATTERNS, DIFFICULTY_COLORS, DIFFICULTIES } from "../data/topics";
 import { dateKey } from "../utils";
 
-export default function AddProblemModal({ onClose, onSave, defaultTopic = "" }) {
-  const [title, setTitle] = useState("");
-  const [url, setUrl] = useState("");
-  const [topic, setTopic] = useState(defaultTopic);
-  const [difficulty, setDifficulty] = useState("Medium");
-  const [status, setStatus] = useState("solved");
-  const [confidence, setConfidence] = useState(3);
-  const [selectedPatterns, setSelectedPatterns] = useState([]);
-  const [notes, setNotes] = useState("");
+export default function AddProblemModal({
+  onClose,
+  onSave,
+  defaultTopic = "",
+  editProblem = null,
+}) {
+  const [title, setTitle] = useState(editProblem?.title || "");
+  const [url, setUrl] = useState(editProblem?.url || "");
+  const [topic, setTopic] = useState(editProblem?.topic || defaultTopic);
+  const [difficulty, setDifficulty] = useState(editProblem?.difficulty || "Medium");
+  const [status, setStatus] = useState(editProblem?.status || "solved");
+  const [confidence, setConfidence] = useState(editProblem?.confidence || 3);
+  const [selectedPatterns, setSelectedPatterns] = useState(editProblem?.patterns || []);
+  const [notes, setNotes] = useState(editProblem?.notes || "");
   const [showPatterns, setShowPatterns] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (editProblem) {
+      setTitle(editProblem.title || "");
+      setUrl(editProblem.url || "");
+      setTopic(editProblem.topic || defaultTopic);
+      setDifficulty(editProblem.difficulty || "Medium");
+      setStatus(editProblem.status || "solved");
+      setConfidence(editProblem.confidence || 3);
+      setSelectedPatterns(editProblem.patterns || []);
+      setNotes(editProblem.notes || "");
+    }
+  }, [editProblem, defaultTopic]);
 
   function togglePattern(p) {
     setSelectedPatterns((prev) =>
@@ -36,6 +54,7 @@ export default function AddProblemModal({ onClose, onSave, defaultTopic = "" }) 
     setSaving(true);
     try {
       await onSave({
+        ...(editProblem || {}),
         title: title.trim(),
         url: url.trim(),
         topic,
@@ -44,7 +63,7 @@ export default function AddProblemModal({ onClose, onSave, defaultTopic = "" }) 
         confidence: status === "solved" ? confidence : 3,
         patterns: selectedPatterns,
         notes: notes.trim(),
-        solve_date: dateKey(new Date()),
+        solve_date: editProblem?.solve_date || dateKey(new Date()),
         platform: "LeetCode",
       });
     } finally {
@@ -60,8 +79,12 @@ export default function AddProblemModal({ onClose, onSave, defaultTopic = "" }) 
         {/* Header */}
         <div style={s.header}>
           <div>
-            <span style={s.heading}>Log a Problem</span>
-            <span style={s.subheading}>Track any coding problem you solved or are working on</span>
+            <span style={s.heading}>{editProblem ? "Edit Problem" : "Log a Problem"}</span>
+            <span style={s.subheading}>
+              {editProblem
+                ? "Update problem details, difficulty, status, or notes"
+                : "Track any coding problem you solved or are working on"}
+            </span>
           </div>
           <button onClick={onClose} style={s.closeBtn}>
             <X size={18} />
@@ -261,7 +284,7 @@ export default function AddProblemModal({ onClose, onSave, defaultTopic = "" }) 
             Cancel
           </button>
           <button style={s.saveBtn} onClick={handleSave} disabled={saving}>
-            {saving ? "Saving..." : "Save Problem"}
+            {saving ? "Saving..." : editProblem ? "Update Problem" : "Save Problem"}
           </button>
         </div>
       </div>

@@ -39,6 +39,30 @@ export function niceDate(str) {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
+// Problem sorting helper: Sorts by Difficulty (Easy -> Medium -> Hard), then by Upload time (Oldest -> Newest)
+const DIFFICULTY_WEIGHT = {
+  "Easy": 1,
+  "Medium": 2,
+  "Hard": 3,
+};
+
+export function sortProblemsByDifficultyAndAge(list) {
+  if (!Array.isArray(list)) return [];
+  return [...list].sort((a, b) => {
+    const diffA = DIFFICULTY_WEIGHT[a.difficulty] || 2;
+    const diffB = DIFFICULTY_WEIGHT[b.difficulty] || 2;
+    if (diffA !== diffB) {
+      return diffA - diffB;
+    }
+    const timeA = new Date(a.created_at || a.solve_date || 0).getTime();
+    const timeB = new Date(b.created_at || b.solve_date || 0).getTime();
+    if (timeA !== timeB) {
+      return timeA - timeB;
+    }
+    return (a.title || a.id || "").localeCompare(b.title || b.id || "");
+  });
+}
+
 // DEFAULT_SKILLS kept for backward-compat with old skills table (legacy).
 // In the new system skill levels are computed from problems — see data/topics.js
 export const DEFAULT_SKILLS = {};

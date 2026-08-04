@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { ArrowLeft, ExternalLink, Plus, Target, AlertTriangle } from "lucide-react";
+import { ArrowLeft, ExternalLink, Plus, Target, AlertTriangle, Pencil } from "lucide-react";
 import { DIFFICULTY_COLORS, LEVEL_META, computeTopicLevel } from "../data/topics";
-import { relativeDays } from "../utils";
+import { relativeDays, sortProblemsByDifficultyAndAge } from "../utils";
 import AddProblemModal from "./AddProblemModal";
 
 export default function TopicDashboard({ topic, category, problems, onBack, onPersistProblem, onDeleteProblem }) {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingProblem, setEditingProblem] = useState(null);
   const [filter, setFilter] = useState("all");
 
   // Data derived from problems
@@ -37,16 +38,14 @@ export default function TopicDashboard({ topic, category, problems, onBack, onPe
     .filter(p => (p.confidence || 3) <= 2)
     .sort((a, b) => new Date(a.solve_date) - new Date(b.solve_date));
 
-  // Displayed problem list
+  // Displayed problem list: Easy -> Medium -> Hard, with oldest uploaded first & newest uploaded last
   const displayProblems = (() => {
     let list = [];
     if (filter === "solved")   list = solved;
     else if (filter === "solving")  list = solving;
     else if (filter === "revision") list = needsRevision;
     else list = [...solving, ...solved];
-    return [...list].sort(
-      (a, b) => new Date(b.solve_date || b.created_at || 0) - new Date(a.solve_date || a.created_at || 0)
-    );
+    return sortProblemsByDifficultyAndAge(list);
   })();
 
   async function handleSaveProblem(problem) {
@@ -274,13 +273,22 @@ export default function TopicDashboard({ topic, category, problems, onBack, onPe
                       {p.solve_date ? relativeDays(p.solve_date) : "—"}
                     </td>
                     <td style={s.td}>
-                      <button
-                        onClick={() => onDeleteProblem(p.id)}
-                        style={{ color: "#3A4560", fontSize: 14, padding: "1px 5px", lineHeight: 1 }}
-                        title="Delete problem"
-                      >
-                        ×
-                      </button>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                        <button
+                          onClick={() => setEditingProblem(p)}
+                          style={{ color: "#5D8DC1", background: "transparent", border: "none", cursor: "pointer", padding: "2px 4px", display: "flex", alignItems: "center" }}
+                          title="Edit problem details"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={() => onDeleteProblem(p.id)}
+                          style={{ color: "#3A4560", fontSize: 14, padding: "1px 5px", lineHeight: 1, background: "transparent", border: "none", cursor: "pointer" }}
+                          title="Delete problem"
+                        >
+                          ×
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -290,11 +298,18 @@ export default function TopicDashboard({ topic, category, problems, onBack, onPe
         )}
       </div>
 
-      {showAddModal && (
+      {(showAddModal || editingProblem) && (
         <AddProblemModal
           defaultTopic={topic.id}
-          onClose={() => setShowAddModal(false)}
-          onSave={handleSaveProblem}
+          editProblem={editingProblem}
+          onClose={() => {
+            setShowAddModal(false);
+            setEditingProblem(null);
+          }}
+          onSave={async (probData) => {
+            await handleSaveProblem(probData);
+            setEditingProblem(null);
+          }}
         />
       )}
     </div>

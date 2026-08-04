@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { Plus, ExternalLink, Trash2, Filter } from "lucide-react";
+import { Plus, ExternalLink, Trash2, Filter, Pencil } from "lucide-react";
 import { DIFFICULTY_COLORS, TOPIC_LABEL, TOPIC_COLOR } from "../data/topics";
-import { relativeDays } from "../utils";
+import { relativeDays, sortProblemsByDifficultyAndAge } from "../utils";
 import AddProblemModal from "./AddProblemModal";
 
 /**
@@ -17,6 +17,7 @@ export default function ProblemVault({
   onDeleteProblem,
 }) {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingProblem, setEditingProblem] = useState(null);
   const [filter, setFilter] = useState("all");
 
   if (!active) return null;
@@ -37,7 +38,7 @@ export default function ProblemVault({
         ).toFixed(1)
       : null;
 
-  // Filtered problem list
+  // Filtered problem list: Easy -> Medium -> Hard, with oldest uploaded first & newest uploaded last
   const filteredProblems = (() => {
     let list = allProblems;
     if (filter === "easy") list = allProblems.filter((p) => p.difficulty === "Easy");
@@ -46,11 +47,7 @@ export default function ProblemVault({
     else if (filter === "solved") list = solvedProblems;
     else if (filter === "solving") list = solvingProblems;
 
-    return [...list].sort(
-      (a, b) =>
-        new Date(b.solve_date || b.created_at || 0) -
-        new Date(a.solve_date || a.created_at || 0)
-    );
+    return sortProblemsByDifficultyAndAge(list);
   })();
 
   async function handleSaveProblem(problem) {
@@ -233,13 +230,22 @@ export default function ProblemVault({
 
                       {/* Actions */}
                       <td style={s.tdActions}>
-                        <button
-                          onClick={() => onDeleteProblem(p.id)}
-                          style={s.deleteBtn}
-                          title="Delete problem"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                          <button
+                            onClick={() => setEditingProblem(p)}
+                            style={s.deleteBtn}
+                            title="Edit problem details"
+                          >
+                            <Pencil size={13} color="#5D8DC1" />
+                          </button>
+                          <button
+                            onClick={() => onDeleteProblem(p.id)}
+                            style={s.deleteBtn}
+                            title="Delete problem"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -250,10 +256,17 @@ export default function ProblemVault({
         )}
       </div>
 
-      {showAddModal && (
+      {(showAddModal || editingProblem) && (
         <AddProblemModal
-          onClose={() => setShowAddModal(false)}
-          onSave={handleSaveProblem}
+          editProblem={editingProblem}
+          onClose={() => {
+            setShowAddModal(false);
+            setEditingProblem(null);
+          }}
+          onSave={async (probData) => {
+            await handleSaveProblem(probData);
+            setEditingProblem(null);
+          }}
         />
       )}
     </div>
