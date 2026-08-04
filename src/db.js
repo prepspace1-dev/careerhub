@@ -239,6 +239,83 @@ export async function saveInterview(userId, interview, fullInterviews) {
   }
 }
 
+/* ---------------- PROJECTS STORAGE ---------------- */
+
+export async function fetchProjects(userId) {
+  if (supabase && userId) {
+    const { data, error } = await supabase
+      .from("projects")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching projects from Supabase:", error);
+      return [];
+    }
+    return data;
+  } else {
+    const data = await storage.get("portfolio-projects-data", true);
+    const list = Array.isArray(data) ? data : [];
+    let dirty = false;
+    const cleaned = list.map((item) => {
+      if (!item.id || item.id.length < 20 || !item.id.includes("-")) {
+        item.id = generateUUID();
+        dirty = true;
+      }
+      return item;
+    });
+    if (dirty) {
+      await storage.set("portfolio-projects-data", cleaned);
+    }
+    return cleaned;
+  }
+}
+
+export async function saveProject(userId, project, fullProjects) {
+  if (supabase && userId) {
+    const { error } = await supabase
+      .from("projects")
+      .upsert({
+        id: project.id || undefined,
+        user_id: userId,
+        title: project.title,
+        tagline: project.tagline || "",
+        phase: project.phase || "Idea",
+        category: project.category || "",
+        tech_stack: project.tech_stack || project.techStack || "",
+        github_url: project.github_url || project.githubUrl || "",
+        demo_url: project.demo_url || project.demoUrl || "",
+        architecture_notes: project.architecture_notes || project.architectureNotes || "",
+        star_pitch: project.star_pitch || project.starPitch || "",
+      });
+
+    if (error) {
+      console.error("Error saving project to Supabase:", error);
+      throw error;
+    }
+  } else {
+    await storage.set("portfolio-projects-data", fullProjects);
+  }
+}
+
+export async function deleteProject(userId, projectId, fullProjects) {
+  if (supabase && userId) {
+    const { error } = await supabase
+      .from("projects")
+      .delete()
+      .eq("id", projectId)
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Error deleting project from Supabase:", error);
+      throw error;
+    }
+  } else {
+    await storage.set("portfolio-projects-data", fullProjects);
+  }
+}
+
 /* ---------------- DATA MIGRATION ON LOGIN ---------------- */
 
 export async function migrateLocalDataToSupabase(userId) {

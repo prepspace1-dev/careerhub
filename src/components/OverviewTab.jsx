@@ -1,5 +1,5 @@
 import React from "react";
-import { Zap, Briefcase, Award, TrendingUp, Calendar, ArrowRight, Clipboard, Star, Map, Database, Building2, BookOpen } from "lucide-react";
+import { Zap, Briefcase, Award, TrendingUp, Calendar, ArrowRight, Clipboard, Star, Map, Database, Building2, BookOpen, FolderKanban } from "lucide-react";
 import { niceDate } from "../utils";
 import { ROADMAPS } from "../data/roadmaps";
 
@@ -194,6 +194,9 @@ export default function OverviewTab({
           </button>
           <button onClick={() => onNavigateToTab("companies")} style={styles.launchBtn}>
             <Building2 size={14} color="#60A5FA" /> Company Packs
+          </button>
+          <button onClick={() => onNavigateToTab("projects")} style={styles.launchBtn}>
+            <FolderKanban size={14} color="#F2A93B" /> Projects Studio
           </button>
         </div>
       </div>

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { LayoutDashboard, ListChecks, BookOpen, Database, Map, Building2, NotebookPen, Briefcase, LogOut, Cloud, CloudOff, User, RefreshCw, Award } from "lucide-react";
+import { LayoutDashboard, ListChecks, BookOpen, Database, Map, Building2, FolderKanban, NotebookPen, Briefcase, LogOut, Cloud, CloudOff, User, RefreshCw, Award } from "lucide-react";
 import OverviewTab from "./components/OverviewTab";
 import TasksTab from "./components/TasksTab";
 import SkillsTab from "./components/SkillsTab";
 import ProblemVault from "./components/ProblemVault";
 import RoadmapsTab from "./components/RoadmapsTab";
 import CompanyPacksTab from "./components/CompanyPacksTab";
+import ProjectsTab from "./components/ProjectsTab";
 import LogTab from "./components/LogTab";
 import InterviewsTab from "./components/InterviewsTab";
 import Auth from "./components/Auth";
@@ -25,6 +26,9 @@ import {
   deleteProblem,
   fetchRoadmapItems,
   saveRoadmapItem,
+  fetchProjects,
+  saveProject,
+  deleteProject,
   fetchXPEvents
   // Phase 3+: fetchRevisionQueue, addXPEvent, getTotalXP, completeRevision
 } from "./db";
@@ -37,6 +41,7 @@ const TABS = [
   { id: "roadmaps", label: "Roadmaps", icon: Map },
   { id: "problems", label: "Problem Vault", icon: Database },
   { id: "companies", label: "Company Packs", icon: Building2 },
+  { id: "projects", label: "Projects", icon: FolderKanban },
   { id: "log", label: "Log", icon: NotebookPen },
   { id: "interviews", label: "Interviews", icon: Briefcase },
 ];
@@ -55,6 +60,7 @@ export default function App() {
   // v2 data
   const [problems, setProblems] = useState([]);
   const [roadmapItems, setRoadmapItems] = useState({});
+  const [projects, setProjects] = useState([]);
   const [_xpEvents, setXpEvents] = useState([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -65,7 +71,7 @@ export default function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const currentHash = window.location.hash.replace("#", "");
-      const validTabs = ["overview", "tasks", "skills", "roadmaps", "problems", "companies", "log", "interviews"];
+      const validTabs = ["overview", "tasks", "skills", "roadmaps", "problems", "companies", "projects", "log", "interviews"];
       if (validTabs.includes(currentHash)) {
         setTab(currentHash);
       } else {
@@ -133,13 +139,14 @@ export default function App() {
   async function loadAllUserData(userId) {
     setDataLoaded(false);
     try {
-      const [tasksData, skillsData, logsData, interviewsData, problemsData, roadmapData, xpData] = await Promise.all([
+      const [tasksData, skillsData, logsData, interviewsData, problemsData, roadmapData, projectsData, xpData] = await Promise.all([
         fetchTasks(userId),
         fetchSkills(userId, DEFAULT_SKILLS),
         fetchLogs(userId),
         fetchInterviews(userId),
         fetchProblems(userId),
         fetchRoadmapItems(userId),
+        fetchProjects(userId),
         fetchXPEvents(userId),
       ]);
       
@@ -149,6 +156,7 @@ export default function App() {
       setInterviews(interviewsData);
       setProblems(problemsData || []);
       setRoadmapItems(roadmapData || {});
+      setProjects(projectsData || []);
       setXpEvents(xpData || []);
     } catch (err) {
       console.error("Error loading application data:", err);
@@ -310,6 +318,36 @@ export default function App() {
     }
   }
 
+  /**
+   * Persist project changes to database / storage
+   */
+  async function persistProject(projectData, nextProjects) {
+    setProjects(nextProjects);
+    setSyncing(true);
+    try {
+      await saveProject(user?.id, projectData, nextProjects);
+    } catch (err) {
+      console.error("Sync error saving project:", err);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  /**
+   * Delete a project entry
+   */
+  async function deleteProjectEntry(projectId, nextProjects) {
+    setProjects(nextProjects);
+    setSyncing(true);
+    try {
+      await deleteProject(user?.id, projectId, nextProjects);
+    } catch (err) {
+      console.error("Sync error deleting project:", err);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   // Display initialization loader
   if (!authInitialized || ( (user || useLocalMode) && !dataLoaded )) {
     return (
@@ -435,6 +473,9 @@ export default function App() {
               <TasksTab 
                 active={true} 
                 tasksHistory={tasks}
+                problems={problems}
+                interviews={interviews}
+                roadmapItems={roadmapItems}
                 onPersistTasks={persistTasks}
               />
             )}
@@ -467,6 +508,14 @@ export default function App() {
               <CompanyPacksTab
                 active={true}
                 problems={problems}
+              />
+            )}
+            {tab === "projects" && (
+              <ProjectsTab
+                active={true}
+                projects={projects}
+                onPersistProject={persistProject}
+                onDeleteProject={deleteProjectEntry}
               />
             )}
             {tab === "log" && (
