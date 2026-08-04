@@ -242,77 +242,85 @@ export async function saveInterview(userId, interview, fullInterviews) {
 /* ---------------- PROJECTS STORAGE ---------------- */
 
 export async function fetchProjects(userId) {
+  let remoteData = null;
   if (supabase && userId) {
-    const { data, error } = await supabase
-      .from("projects")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("Error fetching projects from Supabase:", error);
-      return [];
-    }
-    return data;
-  } else {
-    const data = await storage.get("portfolio-projects-data", true);
-    const list = Array.isArray(data) ? data : [];
-    let dirty = false;
-    const cleaned = list.map((item) => {
-      if (!item.id || item.id.length < 20 || !item.id.includes("-")) {
-        item.id = generateUUID();
-        dirty = true;
+      if (!error && Array.isArray(data)) {
+        remoteData = data;
+      } else if (error) {
+        console.error("Error fetching projects from Supabase:", error);
       }
-      return item;
-    });
-    if (dirty) {
-      await storage.set("portfolio-projects-data", cleaned);
+    } catch (err) {
+      console.error("Supabase fetchProjects exception:", err);
     }
-    return cleaned;
   }
+
+  const localData = await storage.get("portfolio-projects-data", true);
+  const localList = Array.isArray(localData) ? localData : [];
+
+  if (remoteData && remoteData.length > 0) {
+    await storage.set("portfolio-projects-data", remoteData);
+    return remoteData;
+  }
+
+  return localList;
 }
 
 export async function saveProject(userId, project, fullProjects) {
-  if (supabase && userId) {
-    const { error } = await supabase
-      .from("projects")
-      .upsert({
-        id: project.id || undefined,
-        user_id: userId,
-        title: project.title,
-        tagline: project.tagline || "",
-        phase: project.phase || "Idea",
-        category: project.category || "",
-        tech_stack: project.tech_stack || project.techStack || "",
-        github_url: project.github_url || project.githubUrl || "",
-        demo_url: project.demo_url || project.demoUrl || "",
-        architecture_notes: project.architecture_notes || project.architectureNotes || "",
-        star_pitch: project.star_pitch || project.starPitch || "",
-      });
+  // Always persist to local storage immediately so page refresh never loses data
+  await storage.set("portfolio-projects-data", fullProjects);
 
-    if (error) {
-      console.error("Error saving project to Supabase:", error);
-      throw error;
+  if (supabase && userId) {
+    try {
+      const { error } = await supabase
+        .from("projects")
+        .upsert({
+          id: project.id || undefined,
+          user_id: userId,
+          title: project.title,
+          tagline: project.tagline || "",
+          phase: project.phase || "Idea",
+          category: project.category || "",
+          tech_stack: project.tech_stack || project.techStack || "",
+          github_url: project.github_url || project.githubUrl || "",
+          demo_url: project.demo_url || project.demoUrl || "",
+          architecture_notes: project.architecture_notes || project.architectureNotes || "",
+          star_pitch: project.star_pitch || project.starPitch || "",
+        });
+
+      if (error) {
+        console.error("Error saving project to Supabase:", error);
+      }
+    } catch (err) {
+      console.error("Supabase saveProject exception:", err);
     }
-  } else {
-    await storage.set("portfolio-projects-data", fullProjects);
   }
 }
 
 export async function deleteProject(userId, projectId, fullProjects) {
-  if (supabase && userId) {
-    const { error } = await supabase
-      .from("projects")
-      .delete()
-      .eq("id", projectId)
-      .eq("user_id", userId);
+  // Always update local storage immediately
+  await storage.set("portfolio-projects-data", fullProjects);
 
-    if (error) {
-      console.error("Error deleting project from Supabase:", error);
-      throw error;
+  if (supabase && userId) {
+    try {
+      const { error } = await supabase
+        .from("projects")
+        .delete()
+        .eq("id", projectId)
+        .eq("user_id", userId);
+
+      if (error) {
+        console.error("Error deleting project from Supabase:", error);
+      }
+    } catch (err) {
+      console.error("Supabase deleteProject exception:", err);
     }
-  } else {
-    await storage.set("portfolio-projects-data", fullProjects);
   }
 }
 
@@ -489,22 +497,34 @@ export async function migrateLocalDataToSupabase(userId) {
  * Returns array sorted by solve_date descending.
  */
 export async function fetchProblems(userId) {
+  let remoteData = null;
   if (supabase && userId) {
-    const { data, error } = await supabase
-      .from("problems")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("problems")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("Error fetching problems from Supabase:", error);
-      return [];
+      if (!error && Array.isArray(data)) {
+        remoteData = data;
+      } else if (error) {
+        console.error("Error fetching problems from Supabase:", error);
+      }
+    } catch (err) {
+      console.error("Supabase fetchProblems exception:", err);
     }
-    return data;
-  } else {
-    const data = await storage.get("problems-data", true);
-    return Array.isArray(data) ? data : [];
   }
+
+  const localData = await storage.get("problems-data", true);
+  const localList = Array.isArray(localData) ? localData : [];
+
+  if (remoteData && remoteData.length > 0) {
+    await storage.set("problems-data", remoteData);
+    return remoteData;
+  }
+
+  return localList;
 }
 
 /**
@@ -514,51 +534,52 @@ export async function fetchProblems(userId) {
 export async function saveProblem(userId, problem, allProblems) {
   const problemWithId = { ...problem, id: problem.id || generateUUID() };
 
-  if (supabase && userId) {
-    const { data, error } = await supabase
-      .from("problems")
-      .upsert({
-        id:              problemWithId.id,
-        user_id:         userId,
-        title:           problemWithId.title,
-        url:             problemWithId.url || "",
-        platform:        problemWithId.platform || "LeetCode",
-        topic:           problemWithId.topic,
-        difficulty:      problemWithId.difficulty || "Medium",
-        patterns:        problemWithId.patterns || [],
-        company_tags:    problemWithId.company_tags || [],
-        status:          problemWithId.status || "solved",
-        solve_date:      problemWithId.solve_date,
-        solve_time_mins: problemWithId.solve_time_mins || 0,
-        hints_used:      !!problemWithId.hints_used,
-        editorial_used:  !!problemWithId.editorial_used,
-        confidence:      problemWithId.confidence || 3,
-        notes:           problemWithId.notes || "",
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Error saving problem to Supabase:", error);
-      throw error;
-    }
-
-    // Auto-schedule revision for solved problems
-    if (problemWithId.status === "solved") {
-      await scheduleRevision(userId, data.id, problemWithId.confidence || 3);
-    }
-
-    return data;
-  } else {
-    // Local storage fallback
-    const existing = Array.isArray(allProblems) ? allProblems : [];
-    const idx = existing.findIndex(p => p.id === problemWithId.id);
-    const updated = idx >= 0
-      ? existing.map((p, i) => i === idx ? problemWithId : p)
+  // Always update local storage first so data is never lost on refresh
+  const existing = Array.isArray(allProblems) ? allProblems : [];
+  const idx = existing.findIndex((p) => p.id === problemWithId.id);
+  const updated =
+    idx >= 0
+      ? existing.map((p, i) => (i === idx ? problemWithId : p))
       : [problemWithId, ...existing];
-    await storage.set("problems-data", updated);
-    return problemWithId;
+  await storage.set("problems-data", updated);
+
+  if (supabase && userId) {
+    try {
+      const { data, error } = await supabase
+        .from("problems")
+        .upsert({
+          id: problemWithId.id,
+          user_id: userId,
+          title: problemWithId.title,
+          url: problemWithId.url || "",
+          platform: problemWithId.platform || "LeetCode",
+          topic: problemWithId.topic,
+          difficulty: problemWithId.difficulty || "Medium",
+          patterns: problemWithId.patterns || [],
+          company_tags: problemWithId.company_tags || [],
+          status: problemWithId.status || "solved",
+          solve_date: problemWithId.solve_date,
+          solve_time_mins: problemWithId.solve_time_mins || 0,
+          hints_used: !!problemWithId.hints_used,
+          editorial_used: !!problemWithId.editorial_used,
+          confidence: problemWithId.confidence || 3,
+          notes: problemWithId.notes || "",
+        })
+        .select()
+        .maybeSingle();
+
+      if (!error && data) {
+        if (problemWithId.status === "solved") {
+          await scheduleRevision(userId, data.id, problemWithId.confidence || 3);
+        }
+        return data;
+      }
+    } catch (err) {
+      console.error("Supabase saveProblem exception:", err);
+    }
   }
+
+  return problemWithId;
 }
 
 /**
