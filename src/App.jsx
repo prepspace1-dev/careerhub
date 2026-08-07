@@ -4,6 +4,8 @@ import { Sidebar } from "./components/layout/Sidebar";
 import { Header } from "./components/layout/Header";
 import { HeroBanner } from "./components/dashboard/HeroBanner";
 import { QuickMetrics } from "./components/dashboard/QuickMetrics";
+import { ActivityHeatmap } from "./components/dashboard/ActivityHeatmap";
+import { RevisionRadar } from "./components/dashboard/RevisionRadar";
 import { TimelineStrip } from "./components/dashboard/TimelineStrip";
 import { DailyWorkspace } from "./components/daily/DailyWorkspace";
 import { DSAVault } from "./components/dsa/DSAVault";
@@ -23,6 +25,10 @@ function MainContent() {
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           <HeroBanner />
           <QuickMetrics />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: "24px" }}>
+            <ActivityHeatmap />
+            <RevisionRadar />
+          </div>
           <TimelineStrip />
         </div>
       )}
