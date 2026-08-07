@@ -3,7 +3,8 @@ import { useApp } from "../../context/AppContext";
 import { dsaProblems } from "../../data/dsaData";
 import { csAiTopics } from "../../data/csAiData";
 import { projectsData } from "../../data/projectsData";
-import { Search, Sun, Moon, Flame, Edit2, Check, LogOut, Menu, Code2, BrainCircuit, Kanban, X } from "lucide-react";
+import { triggerStreakCelebration, playSuccessSound, toggleSound, isSoundEnabled } from "../../utils/effects";
+import { Search, Sun, Moon, Flame, Edit2, Check, LogOut, Menu, Code2, BrainCircuit, Kanban, X, Volume2, VolumeX } from "lucide-react";
 
 export function Header() {
   const { 
@@ -259,22 +260,54 @@ export function Header() {
           Day {currentDay} of 30
         </div>
 
-        {/* Streak Indicator */}
-        <div className="header-streak-pill" style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
-          padding: "6px 12px",
-          borderRadius: "8px",
-          background: "rgba(245, 158, 11, 0.1)",
-          border: "1px solid rgba(245, 158, 11, 0.3)",
-          color: "var(--accent-amber)",
-          fontWeight: 700,
-          fontSize: "12px"
-        }}>
-          <Flame size={14} />
-          <span>{userStats.streak} Days</span>
-        </div>
+        {/* Streak Indicator (Clickable for Celebration) */}
+        <button
+          onClick={() => {
+            triggerStreakCelebration();
+            playSuccessSound();
+          }}
+          className="header-streak-pill hover-lift"
+          title="Click to celebrate your streak!"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "6px 12px",
+            borderRadius: "8px",
+            background: "rgba(245, 158, 11, 0.15)",
+            border: "1px solid rgba(245, 158, 11, 0.35)",
+            color: "var(--accent-amber)",
+            fontWeight: 700,
+            fontSize: "12px",
+            cursor: "pointer"
+          }}
+        >
+          <Flame size={14} className="active-day-glow" style={{ borderRadius: "50%" }} />
+          <span>{userStats.streak} Days 🔥</span>
+        </button>
+
+        {/* Sound Effects Toggle Button */}
+        <button
+          onClick={() => {
+            const isMuted = !isSoundEnabled();
+            toggleSound();
+            if (isMuted) playSuccessSound();
+          }}
+          title={isSoundEnabled() ? "Sound Effects On (Click to Mute)" : "Sound Effects Off (Click to Enable)"}
+          style={{
+            width: "36px",
+            height: "36px",
+            borderRadius: "10px",
+            background: "var(--bg-card)",
+            border: "var(--glass-border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: isSoundEnabled() ? "var(--accent-indigo)" : "var(--text-muted)"
+          }}
+        >
+          {isSoundEnabled() ? <Volume2 size={18} /> : <VolumeX size={18} />}
+        </button>
 
         {/* Theme Switcher Button */}
         <button

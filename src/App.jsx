@@ -11,6 +11,7 @@ import { CSAIHub } from "./components/csai/CSAIHub";
 import { ProjectsView } from "./components/projects/ProjectsView";
 import { StatsView } from "./components/analytics/StatsView";
 import { CommandPalette } from "./components/ui/CommandPalette";
+import { CelebrationModal } from "./components/ui/CelebrationModal";
 import Auth from "./components/Auth";
 
 function MainContent() {
@@ -37,7 +38,7 @@ function MainContent() {
 }
 
 function AppShell() {
-  const { isAuthenticated, authLoading } = useApp();
+  const { isAuthenticated, authLoading, activeMilestoneModal, setActiveMilestoneModal } = useApp();
 
   if (authLoading) {
     return (
@@ -68,6 +69,11 @@ function AppShell() {
         <MainContent />
       </div>
       <CommandPalette />
+      <CelebrationModal
+        isOpen={!!activeMilestoneModal}
+        onClose={() => setActiveMilestoneModal(null)}
+        milestone={activeMilestoneModal}
+      />
     </div>
   );
 }

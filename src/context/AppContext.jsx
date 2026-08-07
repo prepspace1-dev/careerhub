@@ -4,6 +4,7 @@ import { dsaProblems } from "../data/dsaData";
 import { csAiTopics } from "../data/csAiData";
 import { projectsData } from "../data/projectsData";
 import { supabase, isSupabaseConfigured } from "../supabaseClient";
+import { playSuccessSound, triggerConfetti } from "../utils/effects";
 
 const AppContext = createContext();
 
@@ -23,7 +24,10 @@ export function AppProvider({ children }) {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // User Data State (Initialized from LocalStorage, but overwritten immediately by Supabase Cloud DB on login/sync)
+  // Milestone Celebration Modal State
+  const [activeMilestoneModal, setActiveMilestoneModal] = useState(null);
+
+  // User Data State
   const [dayProgress, setDayProgress] = useState(() => storageService.getDayProgress());
   const [dsaStatus, setDsaStatus] = useState(() => storageService.getDSAStatus());
   const [projectMilestones, setProjectMilestones] = useState(() => storageService.getProjectMilestones());
@@ -96,13 +100,13 @@ export function AppProvider({ children }) {
     }
   };
 
-  // --- SUPABASE CLOUD DATA LOAD (SUPABASE DB IS THE ABSOLUTE PRIMARY GROUND TRUTH) ---
+  // --- SUPABASE CLOUD DATA LOAD ---
   const loadAllUserDataFromSupabase = async (currentUser) => {
     if (!supabase || !currentUser) return;
     const userId = currentUser.id;
 
     try {
-      // 1. Fetch Profile & Display Name
+      // 1. Profile
       const { data: profileData } = await supabase
         .from("user_profiles")
         .select("*")
@@ -123,7 +127,7 @@ export function AppProvider({ children }) {
         storageService.setCurrentDay(profileData.current_day);
       }
 
-      // 2. Fetch DSA Submissions from Supabase Cloud DB
+      // 2. DSA Submissions
       const { data: dsaRows } = await supabase
         .from("dsa_submissions")
         .select("*")
@@ -142,7 +146,7 @@ export function AppProvider({ children }) {
         storageService.saveDSAStatus(dsaMap);
       }
 
-      // 3. Fetch Daily Progress & Checklists from Supabase Cloud DB
+      // 3. Daily Progress
       const { data: progressRows } = await supabase
         .from("daily_progress")
         .select("*")
@@ -161,7 +165,7 @@ export function AppProvider({ children }) {
         storageService.saveDayProgress(progressMap);
       }
 
-      // 4. Fetch Project Milestones from Supabase Cloud DB
+      // 4. Project Milestones
       const { data: milestoneRows } = await supabase
         .from("project_milestones")
         .select("*")
@@ -177,7 +181,7 @@ export function AppProvider({ children }) {
         storageService.saveProjectMilestones(milestoneMap);
       }
 
-      // 5. Fetch Daily Notes from Supabase Cloud DB
+      // 5. Daily Notes
       const { data: noteRows } = await supabase
         .from("daily_notes")
         .select("*")
@@ -196,7 +200,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Listen to Supabase Auth State & Sync Data
+  // Listen to Supabase Auth State
   useEffect(() => {
     if (!isSupabaseConfigured()) {
       setAuthLoading(false);
@@ -226,7 +230,7 @@ export function AppProvider({ children }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Window Focus Auto-Refetch (Guarantees fresh data when switching tabs / Incognito windows)
+  // Window Focus Auto-Refetch
   useEffect(() => {
     const handleFocus = () => {
       if (supabase && user) {
@@ -237,7 +241,7 @@ export function AppProvider({ children }) {
     return () => window.removeEventListener("focus", handleFocus);
   }, [user]);
 
-  // Realtime Supabase Database Subscription (Instantly syncs across concurrent tabs/windows)
+  // Realtime Supabase Database Subscription
   useEffect(() => {
     if (!supabase || !user) return;
 
@@ -271,7 +275,7 @@ export function AppProvider({ children }) {
     setAuthLoading(false);
   };
 
-  // Update Display Name both locally and in Supabase Database + Auth Metadata
+  // Update Display Name
   const updateDisplayName = async (name) => {
     const cleanName = name.trim();
     if (!cleanName) return;
@@ -298,7 +302,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Apply Theme class to document root
+  // Apply Theme
   useEffect(() => {
     const root = document.documentElement;
     if (theme === "dark") {
@@ -315,9 +319,8 @@ export function AppProvider({ children }) {
     setThemeState((prev) => (prev === "dark" ? "light" : "dark"));
   };
 
-  // --- TWO-WAY REACTIVE STATE SYNCHRONIZATION WITH SUPABASE DATABASE UPSERTS ---
+  // --- TWO-WAY REACTIVE STATE SYNCHRONIZATION WITH CELEBRATIONS ---
 
-  // Helper to push daily progress to Supabase
   const syncDailyProgressToSupabase = async (dayNum, updatedDayProgressMap) => {
     if (supabase && user) {
       try {
@@ -336,7 +339,6 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Helper to push DSA Status to Supabase
   const syncDSAStatusToSupabase = async (problemId, status, extra = {}) => {
     if (supabase && user) {
       try {
@@ -358,7 +360,6 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Helper to push Project Milestones to Supabase
   const syncProjectMilestoneToSupabase = async (projectId, dayNum, isDone) => {
     if (supabase && user) {
       try {
@@ -375,7 +376,6 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Helper to push Daily Notes to Supabase
   const syncDailyNoteToSupabase = async (dayNum, noteContent) => {
     if (supabase && user) {
       try {
@@ -391,19 +391,20 @@ export function AppProvider({ children }) {
     }
   };
 
-  // 1. Toggle Day Task Checkbox (Syncs to Theory, DSA Solver/Vault & Project Milestones)
+  // 1. Toggle Day Task
   const toggleDayTask = (dayNum, taskId) => {
     let nextProgress = null;
+    let isChecked = false;
 
     setDayProgress((prev) => {
       const dayData = prev[dayNum] || { tasks: {}, theoryRead: false };
       const currentTasks = dayData.tasks || {};
-      const isNowChecked = !currentTasks[taskId];
-      const updatedTasks = { ...currentTasks, [taskId]: isNowChecked };
+      isChecked = !currentTasks[taskId];
+      const updatedTasks = { ...currentTasks, [taskId]: isChecked };
 
       let newTheoryRead = dayData.theoryRead;
       if (taskId === "read_theory") {
-        newTheoryRead = isNowChecked;
+        newTheoryRead = isChecked;
       }
 
       nextProgress = {
@@ -415,11 +416,15 @@ export function AppProvider({ children }) {
       return nextProgress;
     });
 
+    if (isChecked) {
+      playSuccessSound();
+      triggerConfetti();
+    }
+
     if (nextProgress) {
       syncDailyProgressToSupabase(dayNum, nextProgress);
     }
 
-    // Sync to DSA Status if task is a DSA problem
     if (taskId.startsWith("dsa_prob_")) {
       const problemId = parseInt(taskId.replace("dsa_prob_", ""), 10);
       if (!isNaN(problemId)) {
@@ -428,7 +433,6 @@ export function AppProvider({ children }) {
       }
     }
 
-    // Sync to Project Milestones if task is project sprint
     if (taskId === "project_sprint") {
       const proj = projectsData.find((p) => p.days.includes(dayNum));
       if (proj) {
@@ -437,29 +441,36 @@ export function AppProvider({ children }) {
     }
   };
 
-  // 2. Toggle Theory Read (Syncs to Checklist task 'read_theory')
+  // 2. Toggle Theory Read
   const toggleTheoryRead = (dayNum) => {
     let nextProgress = null;
+    let isReadNow = false;
+
     setDayProgress((prev) => {
       const dayData = prev[dayNum] || { tasks: {}, theoryRead: false };
-      const newTheoryRead = !dayData.theoryRead;
-      const updatedTasks = { ...dayData.tasks, read_theory: newTheoryRead };
+      isReadNow = !dayData.theoryRead;
+      const updatedTasks = { ...dayData.tasks, read_theory: isReadNow };
 
       nextProgress = {
         ...prev,
-        [dayNum]: { ...dayData, theoryRead: newTheoryRead, tasks: updatedTasks }
+        [dayNum]: { ...dayData, theoryRead: isReadNow, tasks: updatedTasks }
       };
 
       storageService.saveDayProgress(nextProgress);
       return nextProgress;
     });
 
+    if (isReadNow) {
+      playSuccessSound();
+      triggerConfetti();
+    }
+
     if (nextProgress) {
       syncDailyProgressToSupabase(dayNum, nextProgress);
     }
   };
 
-  // 3. Update DSA Status (Syncs to Checklist task 'dsa_prob_X' in Today's Tasks + Supabase DB)
+  // 3. Update DSA Status
   const updateDSAStatus = (problemId, newStatus, extra = {}, syncChecklist = true) => {
     const itemToSync = { status: newStatus, ...extra };
 
@@ -467,10 +478,40 @@ export function AppProvider({ children }) {
       const current = prev[problemId] || { status: "Unsolved", notes: "", bookmarked: false };
       const updatedMap = { ...prev, [problemId]: { ...current, ...itemToSync } };
       storageService.saveDSAStatus(updatedMap);
+
+      if (newStatus === "Solved") {
+        playSuccessSound();
+        triggerConfetti();
+
+        // Check Solved Milestones
+        const solvedNum = Object.values(updatedMap).filter((item) => item.status === "Solved").length;
+        if (solvedNum === 1) {
+          setActiveMilestoneModal({
+            type: "dsa",
+            title: "🎉 First DSA Problem Solved!",
+            description: "Congratulations! You've taken the first step towards algorithm mastery.",
+            xp: 50
+          });
+        } else if (solvedNum === 10) {
+          setActiveMilestoneModal({
+            type: "dsa",
+            title: "🏆 10 Problems Solved Milestone!",
+            description: "Double digits! You're sharpening your problem-solving speed every day.",
+            xp: 200
+          });
+        } else if (solvedNum === 50) {
+          setActiveMilestoneModal({
+            type: "dsa",
+            title: "⚡ Halfway DSA Master (50 Solved)!",
+            description: "Sensational effort! You have tackled 50 core interview problems.",
+            xp: 500
+          });
+        }
+      }
+
       return updatedMap;
     });
 
-    // Cloud Upsert to Supabase
     syncDSAStatusToSupabase(problemId, newStatus, itemToSync);
 
     if (syncChecklist) {
@@ -491,7 +532,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  // 4. Toggle Project Milestone (Syncs to Checklist task 'project_sprint' in Today's Tasks + Supabase DB)
+  // 4. Toggle Project Milestone
   const toggleProjectMilestone = (projectId, dayNum, syncChecklist = true) => {
     const currentDone = !!projectMilestones[projectId]?.[dayNum];
     const isNowDone = !currentDone;
@@ -504,7 +545,11 @@ export function AppProvider({ children }) {
       return updatedMap;
     });
 
-    // Cloud Upsert to Supabase
+    if (isNowDone) {
+      playSuccessSound();
+      triggerConfetti();
+    }
+
     syncProjectMilestoneToSupabase(projectId, dayNum, isNowDone);
 
     if (syncChecklist) {
@@ -566,7 +611,6 @@ export function AppProvider({ children }) {
     });
   });
 
-  // Calculate real total study minutes from completed topics
   let realTotalMinutes = 0;
   csAiTopics.forEach((t) => {
     if (dayProgress[t.day]?.theoryRead) {
@@ -574,7 +618,6 @@ export function AppProvider({ children }) {
     }
   });
 
-  // Calculate real consecutive days streak
   let realStreak = 0;
   for (let d = 1; d <= 30; d++) {
     if (dayProgress[d]?.theoryRead) {
@@ -636,7 +679,9 @@ export function AppProvider({ children }) {
         csTotalCount,
         projectMilestonesDone,
         projectMilestonesTotal,
-        overallPercentage
+        overallPercentage,
+        activeMilestoneModal,
+        setActiveMilestoneModal
       }}
     >
       {children}
