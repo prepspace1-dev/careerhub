@@ -93,7 +93,7 @@ export const storageService = {
   // User Profile
   getUserProfile() {
     return getLocalJSON(STORAGE_KEYS.USER_PROFILE, {
-      displayName: "Sai"
+      displayName: ""
     });
   },
   saveUserProfile(profile) {

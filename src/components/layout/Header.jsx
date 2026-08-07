@@ -16,11 +16,22 @@ export function Header() {
     setMobileMenuOpen 
   } = useApp();
 
+  const userEmail = user?.email || "Local Offline Mode";
+  const defaultEmailName = user?.email ? user.email.split("@")[0] : "Engineer";
+  const currentDisplayName = userProfile?.displayName && userProfile.displayName !== "Sai" 
+    ? userProfile.displayName 
+    : defaultEmailName;
+
   const [isEditingName, setIsEditingName] = useState(false);
-  const [nameInput, setNameInput] = useState(userProfile?.displayName || "Sai");
+  const [nameInput, setNameInput] = useState(currentDisplayName);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const menuRef = useRef(null);
+
+  // Sync input when profile updates
+  useEffect(() => {
+    setNameInput(currentDisplayName);
+  }, [currentDisplayName]);
 
   // Close popover when clicking outside
   useEffect(() => {
@@ -40,8 +51,7 @@ export function Header() {
     setIsEditingName(false);
   };
 
-  const initialLetter = (userProfile?.displayName || "S").charAt(0).toUpperCase();
-  const userEmail = user?.email || "Local Offline Mode";
+  const initialLetter = currentDisplayName.charAt(0).toUpperCase();
 
   return (
     <header style={{
@@ -190,7 +200,7 @@ export function Header() {
               {initialLetter}
             </div>
             <span className="profile-name-text" style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>
-              {userProfile?.displayName || "Sai"}
+              {currentDisplayName}
             </span>
           </button>
 
@@ -214,7 +224,7 @@ export function Header() {
               {/* User Info */}
               <div style={{ borderBottom: "var(--glass-border)", paddingBottom: "10px" }}>
                 <div style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)" }}>
-                  {userProfile?.displayName || "Sai"}
+                  {currentDisplayName}
                 </div>
                 <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px", wordBreak: "break-all" }}>
                   {userEmail}
@@ -264,7 +274,7 @@ export function Header() {
                       color: "var(--text-secondary)"
                     }}
                   >
-                    <span>{userProfile?.displayName || "Sai"}</span>
+                    <span>{currentDisplayName}</span>
                     <Edit2 size={12} />
                   </button>
                 )}

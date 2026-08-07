@@ -96,15 +96,18 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Sync Display Name from Supabase auth metadata or user_profiles DB table
+  // Sync Display Name from Supabase auth metadata, DB table, or email username
   const syncSupabaseProfile = async (currentUser) => {
     if (!currentUser) return;
     const localProfile = storageService.getUserProfile();
-    let nameToUse = localProfile.displayName;
+    let nameToUse = "";
 
+    // 1. Check metadata
     if (currentUser.user_metadata?.display_name) {
       nameToUse = currentUser.user_metadata.display_name;
-    } else if (supabase) {
+    } 
+    // 2. Check DB
+    else if (supabase) {
       try {
         const { data } = await supabase
           .from("user_profiles")
@@ -114,21 +117,26 @@ export function AppProvider({ children }) {
         if (data?.display_name) {
           nameToUse = data.display_name;
         }
-      } catch (_e) {
+      } catch {
         // Fallback silently if table query fails
       }
     }
 
+    // 3. Check local storage if not default "Sai"
+    if (!nameToUse && localProfile.displayName && localProfile.displayName !== "Sai") {
+      nameToUse = localProfile.displayName;
+    }
+
+    // 4. Default to email username for initial login
     if (!nameToUse && currentUser.email) {
       const namePart = currentUser.email.split("@")[0];
       nameToUse = namePart.charAt(0).toUpperCase() + namePart.slice(1);
     }
 
-    if (nameToUse) {
-      const updated = { displayName: nameToUse };
-      setUserProfile(updated);
-      storageService.saveUserProfile(updated);
-    }
+    const finalName = nameToUse || "Engineer";
+    const updated = { displayName: finalName };
+    setUserProfile(updated);
+    storageService.saveUserProfile(updated);
   };
 
   // Listen to Supabase Auth State
