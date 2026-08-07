@@ -96,6 +96,41 @@ export function AppProvider({ children }) {
     }
   };
 
+  // Sync Display Name from Supabase auth metadata or user_profiles DB table
+  const syncSupabaseProfile = async (currentUser) => {
+    if (!currentUser) return;
+    const localProfile = storageService.getUserProfile();
+    let nameToUse = localProfile.displayName;
+
+    if (currentUser.user_metadata?.display_name) {
+      nameToUse = currentUser.user_metadata.display_name;
+    } else if (supabase) {
+      try {
+        const { data } = await supabase
+          .from("user_profiles")
+          .select("display_name")
+          .eq("user_id", currentUser.id)
+          .single();
+        if (data?.display_name) {
+          nameToUse = data.display_name;
+        }
+      } catch (_e) {
+        // Fallback silently if table query fails
+      }
+    }
+
+    if (!nameToUse && currentUser.email) {
+      const namePart = currentUser.email.split("@")[0];
+      nameToUse = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+    }
+
+    if (nameToUse) {
+      const updated = { displayName: nameToUse };
+      setUserProfile(updated);
+      storageService.saveUserProfile(updated);
+    }
+  };
+
   // Listen to Supabase Auth State
   useEffect(() => {
     if (!isSupabaseConfigured()) {
@@ -105,22 +140,20 @@ export function AppProvider({ children }) {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user?.email) {
-        const namePart = session.user.email.split("@")[0];
-        const formattedName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
-        setUserProfile((prev) => ({ ...prev, displayName: prev.displayName || formattedName }));
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        syncSupabaseProfile(currentUser);
       }
       setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user?.email) {
-        const namePart = session.user.email.split("@")[0];
-        const formattedName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
-        setUserProfile((prev) => ({ ...prev, displayName: prev.displayName || formattedName }));
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        syncSupabaseProfile(currentUser);
       }
       setAuthLoading(false);
     });
@@ -142,10 +175,33 @@ export function AppProvider({ children }) {
     setAuthLoading(false);
   };
 
-  const updateDisplayName = (name) => {
-    const updated = { ...userProfile, displayName: name };
+  // Update Display Name both locally and in Supabase Database + Auth Metadata
+  const updateDisplayName = async (name) => {
+    const cleanName = name.trim();
+    if (!cleanName) return;
+
+    const updated = { displayName: cleanName };
     setUserProfile(updated);
     storageService.saveUserProfile(updated);
+
+    if (supabase && user) {
+      try {
+        // 1. Update Supabase Auth metadata
+        await supabase.auth.updateUser({
+          data: { display_name: cleanName }
+        });
+
+        // 2. Upsert into user_profiles database table
+        await supabase.from("user_profiles").upsert({
+          user_id: user.id,
+          email: user.email,
+          display_name: cleanName,
+          updated_at: new Date().toISOString()
+        }, { onConflict: "user_id" });
+      } catch (err) {
+        console.error("Error saving display name to Supabase:", err);
+      }
+    }
   };
 
   // Apply Theme class to document root
@@ -206,7 +262,7 @@ export function AppProvider({ children }) {
       const problemId = parseInt(taskId.replace("dsa_prob_", ""), 10);
       if (!isNaN(problemId)) {
         const isNowChecked = !dayProgress[dayNum]?.tasks?.[taskId];
-        updateDSAStatus(problemId, isNowChecked ? "Solved" : "Unsolved", {}, false); // false to avoid loop recursion
+        updateDSAStatus(problemId, isNowChecked ? "Solved" : "Unsolved", {}, false);
       }
     }
 
