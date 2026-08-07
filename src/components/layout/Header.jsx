@@ -1,19 +1,23 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useApp } from "../../context/AppContext";
-import { Search, Sun, Moon, Flame, Edit2, Check, LogOut, Menu } from "lucide-react";
+import { dsaProblems } from "../../data/dsaData";
+import { csAiTopics } from "../../data/csAiData";
+import { projectsData } from "../../data/projectsData";
+import { Search, Sun, Moon, Flame, Edit2, Check, LogOut, Menu, Code2, BrainCircuit, Kanban, X } from "lucide-react";
 
 export function Header() {
   const { 
     theme, 
     toggleTheme, 
-    setCommandPaletteOpen, 
     currentDay, 
     userStats, 
     userProfile, 
     updateDisplayName, 
     user, 
     logout,
-    setMobileMenuOpen 
+    setMobileMenuOpen,
+    setActiveTab,
+    setCurrentDay
   } = useApp();
 
   const userEmail = user?.email || "Local Offline Mode";
@@ -26,18 +30,26 @@ export function Header() {
   const [nameInput, setNameInput] = useState(currentDisplayName);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Compact Header Search State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+
   const menuRef = useRef(null);
+  const searchRef = useRef(null);
 
   // Sync input when profile updates
   useEffect(() => {
     setNameInput(currentDisplayName);
   }, [currentDisplayName]);
 
-  // Close popover when clicking outside
+  // Close popovers when clicking outside
   useEffect(() => {
     function handleClickOutside(e) {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         setMenuOpen(false);
+      }
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setSearchOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -53,6 +65,38 @@ export function Header() {
 
   const initialLetter = currentDisplayName.charAt(0).toUpperCase();
 
+  // Search Results Computation
+  const cleanQuery = searchQuery.trim().toLowerCase();
+  let searchResults = [];
+
+  if (cleanQuery.length > 0) {
+    const matchedDSA = dsaProblems
+      .filter(p => p.title.toLowerCase().includes(cleanQuery) || p.topic.toLowerCase().includes(cleanQuery))
+      .slice(0, 4)
+      .map(p => ({ ...p, type: "dsa", icon: Code2, label: `Day ${p.day} • ${p.topic}` }));
+
+    const matchedCS = csAiTopics
+      .filter(t => t.title.toLowerCase().includes(cleanQuery) || t.area.toLowerCase().includes(cleanQuery))
+      .slice(0, 4)
+      .map(t => ({ ...t, type: "csai", icon: BrainCircuit, label: `Day ${t.day} • ${t.area}` }));
+
+    const matchedProjects = projectsData
+      .filter(p => p.title.toLowerCase().includes(cleanQuery) || p.subtitle.toLowerCase().includes(cleanQuery))
+      .slice(0, 2)
+      .map(p => ({ ...p, type: "projects", icon: Kanban, label: p.subtitle }));
+
+    searchResults = [...matchedDSA, ...matchedCS, ...matchedProjects];
+  }
+
+  const handleSelectSearchResult = (item) => {
+    if (item.day) {
+      setCurrentDay(item.day);
+    }
+    setActiveTab(item.type);
+    setSearchQuery("");
+    setSearchOpen(false);
+  };
+
   return (
     <header style={{
       height: "64px",
@@ -64,9 +108,9 @@ export function Header() {
       padding: "0 28px",
       position: "sticky",
       top: 0,
-      zIndex: 10
+      zIndex: 30
     }} className="app-header">
-      {/* Left: Mobile Hamburger Menu Button & Search Launcher */}
+      {/* Left: Mobile Hamburger Menu & Compact Header Search Bar */}
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
         <button
           onClick={() => setMobileMenuOpen(true)}
@@ -87,37 +131,117 @@ export function Header() {
           <Menu size={20} />
         </button>
 
-        {/* Search Launcher */}
-        <button
-          onClick={() => setCommandPaletteOpen(true)}
-          className="header-search-btn"
-          style={{
+        {/* Compact Cute Search Input with Instant Dropdown */}
+        <div ref={searchRef} style={{ position: "relative" }}>
+          <div style={{
             display: "flex",
             alignItems: "center",
-            gap: "10px",
-            padding: "8px 14px",
-            borderRadius: "10px",
+            gap: "8px",
+            padding: "6px 12px",
+            borderRadius: "9999px",
             background: "var(--bg-card)",
-            border: "var(--glass-border)",
-            color: "var(--text-muted)",
-            fontSize: "13px",
-            width: "280px"
-          }}
-        >
-          <Search size={15} />
-          <span className="search-text-label" style={{ flex: 1, textAlign: "left" }}>Search topics, problems...</span>
-          <kbd className="cmd-k-badge" style={{
-            fontSize: "10px",
-            fontWeight: 700,
-            padding: "2px 6px",
-            borderRadius: "4px",
-            background: "var(--bg-input)",
-            border: "var(--glass-border)",
-            color: "var(--text-secondary)"
+            border: searchOpen ? "1px solid var(--accent-indigo)" : "var(--glass-border)",
+            width: "260px",
+            transition: "all 0.2s ease",
+            boxShadow: searchOpen ? "0 0 12px var(--glow-accent)" : "none"
           }}>
-            ⌘K
-          </kbd>
-        </button>
+            <Search size={14} style={{ color: searchOpen ? "var(--accent-indigo)" : "var(--text-muted)" }} />
+            <input
+              type="text"
+              placeholder="Search topics, problems..."
+              value={searchQuery}
+              onFocus={() => setSearchOpen(true)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setSearchOpen(true);
+              }}
+              style={{
+                flex: 1,
+                border: "none",
+                background: "transparent",
+                outline: "none",
+                fontSize: "12.5px",
+                color: "var(--text-primary)",
+                fontWeight: 500
+              }}
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery("")} style={{ color: "var(--text-muted)", padding: 0 }}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Cute Live Search Results Dropdown */}
+          {searchOpen && searchQuery.trim().length > 0 && (
+            <div style={{
+              position: "absolute",
+              top: "44px",
+              left: 0,
+              width: "320px",
+              background: "var(--bg-card)",
+              backdropFilter: "blur(16px)",
+              border: "var(--glass-border)",
+              borderRadius: "14px",
+              boxShadow: "0 14px 40px rgba(0,0,0,0.35)",
+              padding: "8px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "4px",
+              zIndex: 50,
+              maxHeight: "360px",
+              overflowY: "auto"
+            }}>
+              {searchResults.length > 0 ? (
+                searchResults.map((item, idx) => {
+                  const ItemIcon = item.icon;
+                  return (
+                    <button
+                      key={`${item.type}-${item.id || idx}`}
+                      onClick={() => handleSelectSearchResult(item)}
+                      className="hover-lift"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        padding: "10px 12px",
+                        borderRadius: "10px",
+                        background: "transparent",
+                        textAlign: "left",
+                        width: "100%"
+                      }}
+                    >
+                      <div style={{
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "8px",
+                        background: "var(--bg-input)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--accent-indigo)"
+                      }}>
+                        <ItemIcon size={15} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {item.title}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                          {item.label}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              ) : (
+                <div style={{ padding: "16px", textAlign: "center", fontSize: "12.5px", color: "var(--text-muted)" }}>
+                  No matching topics or problems found.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Right Actions */}
@@ -189,7 +313,7 @@ export function Header() {
               width: "28px",
               height: "28px",
               borderRadius: "9999px",
-              background: "var(--accent-indigo)",
+              background: "linear-gradient(135deg, var(--accent-indigo), var(--accent-violet))",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -212,6 +336,7 @@ export function Header() {
               top: "44px",
               width: "240px",
               background: "var(--bg-card)",
+              backdropFilter: "blur(16px)",
               border: "var(--glass-border)",
               borderRadius: "14px",
               boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
@@ -311,3 +436,4 @@ export function Header() {
     </header>
   );
 }
+

@@ -7,25 +7,26 @@
 
 /* DARK THEME (DEFAULT) */
 html, html.dark {
-  --bg: #090d16;
-  --bg-subtle: #0f1624;
-  --bg-card: rgba(17, 24, 39, 0.85);
-  --bg-card-hover: rgba(24, 34, 53, 0.9);
-  --bg-input: #131c2e;
+  --bg: #070a12;
+  --bg-subtle: #0d1322;
+  --bg-card: rgba(15, 23, 42, 0.75);
+  --bg-card-hover: rgba(26, 38, 66, 0.85);
+  --bg-input: #111a2e;
   --border: rgba(255, 255, 255, 0.1);
-  --border-glow: rgba(99, 102, 241, 0.4);
+  --border-glow: rgba(99, 102, 241, 0.45);
   
-  --text-primary: #f3f4f6;
-  --text-secondary: #9ca3af;
-  --text-muted: #6b7280;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
   
   --accent-indigo: #6366f1;
   --accent-violet: #8b5cf6;
   --accent-emerald: #10b981;
   --accent-amber: #f59e0b;
   --accent-rose: #f43f5e;
+  --accent-cyan: #06b6d4;
   
-  --glow-accent: rgba(99, 102, 241, 0.15);
+  --glow-accent: rgba(99, 102, 241, 0.18);
   --glass-border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -48,6 +49,7 @@ html.light {
   --accent-emerald: #059669;
   --accent-amber: #d97706;
   --accent-rose: #e11d48;
+  --accent-cyan: #0891b2;
   
   --glow-accent: rgba(79, 70, 229, 0.08);
   --glass-border: 1px solid rgba(226, 232, 240, 0.8);
@@ -82,6 +84,11 @@ button {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--accent-indigo);
+  outline-offset: 2px;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -101,16 +108,21 @@ button {
 /* Glassmorphism Card Utility */
 .glass-card {
   background: var(--bg-card);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: var(--glass-border);
   border-radius: 16px;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s ease, background 0.25s ease;
 }
 
 .glass-card:hover {
   background: var(--bg-card-hover);
   border-color: var(--border-glow);
-  box-shadow: 0 10px 30px -10px var(--glow-accent);
+  box-shadow: 0 12px 32px -10px var(--glow-accent);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
 }
 
 /* Glow animation for active current day */
@@ -133,6 +145,38 @@ button {
 
 .animate-fade-in {
   animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* 3D Flashcard Flip utilities */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.flashcard-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+}
+
+.flashcard-inner.flipped {
+  transform: rotateY(180deg);
+}
+
+.flashcard-front, .flashcard-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  border-radius: 16px;
+  top: 0;
+  left: 0;
+}
+
+.flashcard-back {
+  transform: rotateY(180deg);
 }
 
 /* Code block typography */

@@ -1,6 +1,6 @@
 import React from "react";
 import { useApp } from "../../context/AppContext";
-import { Flame, CheckCircle2, Award, Clock } from "lucide-react";
+import { Flame, CheckCircle2, Award, Target, Sparkles } from "lucide-react";
 
 export function StatsView() {
   const { 
@@ -8,57 +8,111 @@ export function StatsView() {
     dsaTotalCount, 
     overallPercentage, 
     userStats,
-    dayProgress 
+    dayProgress,
+    csCompletedCount,
+    projectMilestonesDone,
+    projectMilestonesTotal
   } = useApp();
+
+  const placementReadiness = Math.round(overallPercentage * 0.95 + 5);
 
   return (
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* Header */}
       <div className="glass-card" style={{ padding: "24px" }}>
         <h2 style={{ fontSize: "24px", fontWeight: 800, color: "var(--text-primary)" }}>
-          Analytics & Progress Dashboard
+          Analytics & Placement Readiness Engine
         </h2>
         <p style={{ fontSize: "14px", color: "var(--text-muted)", marginTop: "4px" }}>
-          Track your daily study consistency and transformation trajectory.
+          Track your learning velocity, consistency streak, and placement readiness index.
         </p>
       </div>
 
       {/* Top Metrics Row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-        <div className="glass-card" style={{ padding: "20px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
+        <div className="glass-card hover-lift" style={{ padding: "20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-emerald)", fontSize: "13px", fontWeight: 700, marginBottom: "8px" }}>
+            <Target size={18} />
+            <span>READINESS INDEX</span>
+          </div>
+          <div style={{ fontSize: "32px", fontWeight: 800, color: "var(--accent-emerald)" }}>{placementReadiness}%</div>
+          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>SDE Interview Target</div>
+        </div>
+
+        <div className="glass-card hover-lift" style={{ padding: "20px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-amber)", fontSize: "13px", fontWeight: 700, marginBottom: "8px" }}>
             <Flame size={18} />
             <span>CURRENT STREAK</span>
           </div>
-          <div style={{ fontSize: "28px", fontWeight: 800, color: "var(--text-primary)" }}>{userStats.streak} Days</div>
+          <div style={{ fontSize: "32px", fontWeight: 800, color: "var(--accent-amber)" }}>{userStats.streak} Days</div>
           <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>Daily Consistency</div>
         </div>
 
-        <div className="glass-card" style={{ padding: "20px" }}>
+        <div className="glass-card hover-lift" style={{ padding: "20px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-indigo)", fontSize: "13px", fontWeight: 700, marginBottom: "8px" }}>
             <CheckCircle2 size={18} />
             <span>OVERALL PROGRESS</span>
           </div>
-          <div style={{ fontSize: "28px", fontWeight: 800, color: "var(--text-primary)" }}>{overallPercentage}%</div>
-          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>Journey Complete</div>
+          <div style={{ fontSize: "32px", fontWeight: 800, color: "var(--text-primary)" }}>{overallPercentage}%</div>
+          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>Curriculum Complete</div>
         </div>
 
-        <div className="glass-card" style={{ padding: "20px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-emerald)", fontSize: "13px", fontWeight: 700, marginBottom: "8px" }}>
-            <Award size={18} />
-            <span>DSA PROBLEMS</span>
-          </div>
-          <div style={{ fontSize: "28px", fontWeight: 800, color: "var(--text-primary)" }}>{dsaSolvedCount} / {dsaTotalCount}</div>
-          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>Solved</div>
-        </div>
-
-        <div className="glass-card" style={{ padding: "20px" }}>
+        <div className="glass-card hover-lift" style={{ padding: "20px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-violet)", fontSize: "13px", fontWeight: 700, marginBottom: "8px" }}>
-            <Clock size={18} />
-            <span>STUDY TIME</span>
+            <Award size={18} />
+            <span>DSA SOLVED</span>
           </div>
-          <div style={{ fontSize: "28px", fontWeight: 800, color: "var(--text-primary)" }}>{(userStats.totalMinutes / 60).toFixed(1)} hrs</div>
-          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>Logged</div>
+          <div style={{ fontSize: "32px", fontWeight: 800, color: "var(--text-primary)" }}>{dsaSolvedCount} / {dsaTotalCount}</div>
+          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>Problems Completed</div>
+        </div>
+      </div>
+
+      {/* Category Breakdown */}
+      <div className="glass-card" style={{ padding: "24px" }}>
+        <h3 style={{ fontSize: "16px", fontWeight: 800, color: "var(--text-primary)", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+          <Sparkles size={16} style={{ color: "var(--accent-indigo)" }} />
+          <span>Curriculum Mastery Breakdown</span>
+        </h3>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
+          {/* DSA */}
+          <div style={{ padding: "16px", borderRadius: "12px", background: "var(--bg-input)", border: "var(--glass-border)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", fontWeight: 700, marginBottom: "8px" }}>
+              <span>DSA Problem Sheet</span>
+              <span style={{ color: "var(--accent-emerald)" }}>{Math.round((dsaSolvedCount / dsaTotalCount) * 100)}%</span>
+            </div>
+            <div style={{ height: "6px", borderRadius: "9999px", background: "var(--border)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${Math.round((dsaSolvedCount / dsaTotalCount) * 100)}%`, background: "var(--accent-emerald)" }} />
+            </div>
+          </div>
+
+          {/* CS & AI */}
+          <div style={{ padding: "16px", borderRadius: "12px", background: "var(--bg-input)", border: "var(--glass-border)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", fontWeight: 700, marginBottom: "8px" }}>
+              <span>CS & Modern AI Hub</span>
+              <span style={{ color: "var(--accent-indigo)" }}>{Math.round((csCompletedCount / 30) * 100)}%</span>
+            </div>
+            <div style={{ height: "6px", borderRadius: "9999px", background: "var(--border)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${Math.round((csCompletedCount / 30) * 100)}%`, background: "var(--accent-indigo)" }} />
+            </div>
+          </div>
+
+          {/* Projects */}
+          <div style={{ padding: "16px", borderRadius: "12px", background: "var(--bg-input)", border: "var(--glass-border)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", fontWeight: 700, marginBottom: "8px" }}>
+              <span>Capstone Projects</span>
+              <span style={{ color: "var(--accent-violet)" }}>
+                {projectMilestonesTotal > 0 ? Math.round((projectMilestonesDone / projectMilestonesTotal) * 100) : 0}%
+              </span>
+            </div>
+            <div style={{ height: "6px", borderRadius: "9999px", background: "var(--border)", overflow: "hidden" }}>
+              <div style={{
+                height: "100%",
+                width: `${projectMilestonesTotal > 0 ? Math.round((projectMilestonesDone / projectMilestonesTotal) * 100) : 0}%`,
+                background: "var(--accent-violet)"
+              }} />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -74,6 +128,7 @@ export function StatsView() {
             return (
               <div
                 key={dayNum}
+                className="hover-lift"
                 style={{
                   height: "44px",
                   borderRadius: "8px",
@@ -84,7 +139,8 @@ export function StatsView() {
                   justifyContent: "center",
                   fontWeight: 700,
                   fontSize: "12px",
-                  color: isCompleted ? "#fff" : "var(--text-muted)"
+                  color: isCompleted ? "#fff" : "var(--text-muted)",
+                  boxShadow: isCompleted ? "0 2px 10px rgba(16, 185, 129, 0.25)" : "none"
                 }}
                 title={`Day ${dayNum}: ${isCompleted ? "Completed" : "Incomplete"}`}
               >
@@ -97,3 +153,4 @@ export function StatsView() {
     </div>
   );
 }
+
