@@ -100,15 +100,15 @@ export function AppProvider({ children }) {
     }
   };
 
-  // --- SUPABASE CLOUD DATA LOAD (LOADS ALL USER DATA FROM DB ON LOGIN WITH DUAL TABLE FALLBACKS) ---
+  // --- SUPABASE CLOUD DATA LOAD (LOADS ALL USER DATA FROM DB ON LOGIN WITH BOTH TABLES MAPPER) ---
   const loadAllUserDataFromSupabase = async (currentUser) => {
     if (!supabase || !currentUser) return;
     const userId = currentUser.id;
 
     try {
-      console.log(`[Supabase Cloud DB Sync] Fetching user tables for: ${currentUser.email}`);
+      console.log(`[Supabase Cloud DB Sync] Syncing user profile & data for: ${currentUser.email}`);
 
-      // 1. Profile
+      // 1. Upsert Profile into user_profiles
       let nameToUse = currentUser.user_metadata?.display_name || "";
       if (!nameToUse && currentUser.email) {
         const namePart = currentUser.email.split("@")[0];
@@ -116,67 +116,78 @@ export function AppProvider({ children }) {
       }
       const finalName = nameToUse || "Engineer";
 
-      try {
-        const { data: profileData } = await supabase
-          .from("user_profiles")
-          .upsert({
-            user_id: userId,
-            email: currentUser.email || "",
-            display_name: finalName,
-            updated_at: new Date().toISOString()
-          }, { onConflict: "user_id" })
-          .select()
-          .maybeSingle();
+      const { data: profileData } = await supabase
+        .from("user_profiles")
+        .upsert({
+          user_id: userId,
+          email: currentUser.email || "",
+          display_name: finalName,
+          updated_at: new Date().toISOString()
+        }, { onConflict: "user_id" })
+        .select()
+        .maybeSingle();
 
-        setUserProfile({ displayName: finalName });
-        storageService.saveUserProfile({ displayName: finalName });
+      setUserProfile({ displayName: finalName });
+      storageService.saveUserProfile({ displayName: finalName });
 
-        if (profileData?.current_day) {
-          setCurrentDayState(profileData.current_day);
-          storageService.setCurrentDay(profileData.current_day);
-        }
-      } catch (e) {
-        console.warn("user_profiles upsert notice:", e);
+      if (profileData?.current_day) {
+        setCurrentDayState(profileData.current_day);
+        storageService.setCurrentDay(profileData.current_day);
       }
 
-      // 2. Fetch DSA Submissions (Try 'dsa_submissions', fallback to 'problems')
-      let dsaRows = null;
-      const { data: primaryDSARows, error: dsaErr } = await supabase
+      // 2. Fetch DSA Submissions (Queries both 'dsa_submissions' AND legacy 'problems' table)
+      const dsaMap = {};
+
+      // A. Query new dsa_submissions table
+      const { data: dsaSubmissionsRows } = await supabase
         .from("dsa_submissions")
         .select("*")
         .eq("user_id", userId);
 
-      if (!dsaErr && Array.isArray(primaryDSARows)) {
-        dsaRows = primaryDSARows;
-      } else {
-        // Fallback to 'problems' table if 'dsa_submissions' does not exist
-        const { data: fallbackDSARows } = await supabase
-          .from("problems")
-          .select("*")
-          .eq("user_id", userId);
-        if (Array.isArray(fallbackDSARows)) {
-          dsaRows = fallbackDSARows;
-        }
-      }
-
-      if (Array.isArray(dsaRows)) {
-        const dsaMap = {};
-        dsaRows.forEach((row) => {
-          const probId = row.problem_id || row.id;
-          if (probId) {
-            dsaMap[probId] = {
-              status: row.status || "Unsolved",
-              notes: row.personal_notes || row.notes || "",
+      if (Array.isArray(dsaSubmissionsRows)) {
+        dsaSubmissionsRows.forEach((row) => {
+          if (row.problem_id) {
+            dsaMap[row.problem_id] = {
+              status: row.status || "Solved",
+              notes: row.personal_notes || "",
               bookmarked: !!row.bookmarked
             };
           }
         });
-        console.log(`[Supabase Cloud DB] Successfully loaded ${dsaRows.length} DSA records.`);
+      }
+
+      // B. Query legacy problems table (shown in user's screenshot with 33 records!)
+      const { data: legacyProblemsRows } = await supabase
+        .from("problems")
+        .select("*")
+        .eq("user_id", userId);
+
+      if (Array.isArray(legacyProblemsRows)) {
+        legacyProblemsRows.forEach((row) => {
+          // Map title or id to 90 DSA Problems
+          const matchedProb = dsaProblems.find((p) => 
+            p.title.toLowerCase() === (row.title || "").toLowerCase() ||
+            p.id === row.problem_id
+          );
+          const probId = matchedProb ? matchedProb.id : row.problem_id;
+          if (probId && !dsaMap[probId]) {
+            dsaMap[probId] = {
+              status: row.status || "Solved",
+              notes: row.notes || "",
+              bookmarked: false
+            };
+          }
+        });
+      }
+
+      const totalLoaded = Object.keys(dsaMap).length;
+      console.log(`[Supabase Cloud DB] Total solved/recorded DSA items loaded: ${totalLoaded}`);
+      if (totalLoaded > 0) {
         setDsaStatus(dsaMap);
         storageService.saveDSAStatus(dsaMap);
       }
 
-      // 3. Fetch Daily Progress (Try 'daily_progress', fallback to 'daily_tasks')
+      // 3. Fetch Daily Progress
       let progressRows = null;
       const { data: primaryProgRows, error: progErr } = await supabase
         .from("daily_progress")
@@ -227,7 +238,7 @@ export function AppProvider({ children }) {
         storageService.saveProjectMilestones(milestoneMap);
       }
 
-      // 5. Fetch Daily Notes (Try 'daily_notes', fallback to 'daily_logs')
+      // 5. Fetch Daily Notes
       let noteRows = null;
       const { data: primaryNoteRows, error: noteErr } = await supabase
         .from("daily_notes")
@@ -381,32 +392,28 @@ export function AppProvider({ children }) {
     setThemeState((prev) => (prev === "dark" ? "light" : "dark"));
   };
 
-  // --- TWO-WAY REACTIVE STATE SYNCHRONIZATION WITH DUAL TABLE FALLBACKS ---
+  // --- TWO-WAY REACTIVE STATE SYNCHRONIZATION ---
 
   const syncDailyProgressToSupabase = async (dayNum, updatedDayProgressMap) => {
     if (supabase && user) {
       try {
         const dayData = updatedDayProgressMap[dayNum] || { tasks: {}, theoryRead: false, reflection: {} };
         
-        // Try daily_progress table first
-        const { error: err1 } = await supabase.from("daily_progress").upsert({
+        await supabase.from("daily_progress").upsert({
           user_id: user.id,
           day_number: dayNum,
           theory_completed: !!dayData.theoryRead,
           tasks_completed: dayData.tasks || {},
           reflection: dayData.reflection || {},
           updated_at: new Date().toISOString()
-        }, { onConflict: "user_id,day_number" });
+        }, { onConflict: "user_id,day_number" }).catch(() => {});
 
-        // Fallback to daily_tasks if table does not exist
-        if (err1 && (err1.code === "42P01" || err1.message?.includes("does not exist"))) {
-          await supabase.from("daily_tasks").upsert({
-            user_id: user.id,
-            date: new Date().toISOString().split("T")[0],
-            learn: !!dayData.theoryRead,
-            notes: dayData.tasks || {}
-          }, { onConflict: "user_id,date" }).catch(() => {});
-        }
+        await supabase.from("daily_tasks").upsert({
+          user_id: user.id,
+          date: new Date().toISOString().split("T")[0],
+          learn: !!dayData.theoryRead,
+          notes: dayData.tasks || {}
+        }, { onConflict: "user_id,date" }).catch(() => {});
       } catch (err) {
         console.error("Supabase daily_progress sync error:", err);
       }
@@ -418,8 +425,9 @@ export function AppProvider({ children }) {
       try {
         const prob = dsaProblems.find((p) => p.id === problemId);
         const leetcodeId = prob ? prob.leetcodeId : problemId;
+        const title = prob ? prob.title : `Problem #${problemId}`;
 
-        // Try user_profiles first
+        // 1. Ensure user_profiles row exists
         await supabase.from("user_profiles").upsert({
           user_id: user.id,
           email: user.email || "",
@@ -427,7 +435,7 @@ export function AppProvider({ children }) {
           updated_at: new Date().toISOString()
         }, { onConflict: "user_id" }).catch(() => {});
 
-        // Try dsa_submissions table
+        // 2. Write to dsa_submissions table
         const { error: err1 } = await supabase.from("dsa_submissions").upsert({
           user_id: user.id,
           problem_id: problemId,
@@ -438,23 +446,17 @@ export function AppProvider({ children }) {
           updated_at: new Date().toISOString()
         }, { onConflict: "user_id,problem_id" });
 
-        // Fallback to 'problems' table if 'dsa_submissions' table does not exist in Supabase!
-        if (err1 && (err1.code === "42P01" || err1.message?.includes("does not exist"))) {
-          console.warn("[Supabase] dsa_submissions table missing. Falling back to problems table...");
-          const { error: err2 } = await supabase.from("problems").upsert({
-            user_id: user.id,
-            problem_id: problemId,
-            status: status,
-            notes: extra?.notes || "",
-            updated_at: new Date().toISOString()
-          }, { onConflict: "user_id,problem_id" });
+        // 3. Write to legacy 'problems' table (shown in user's screenshot!)
+        const { error: err2 } = await supabase.from("problems").upsert({
+          user_id: user.id,
+          title: title,
+          url: prob ? `https://leetcode.com/problems/${prob.title.toLowerCase().replace(/\s+/g, "-")}` : "",
+          platform: "LeetCode",
+          status: status,
+          notes: extra?.notes || ""
+        }).catch(() => ({ error: true }));
 
-          if (!err2) {
-            console.log(`[Supabase Cloud DB] Saved problem #${problemId} in problems table as ${status}`);
-          }
-        } else if (!err1) {
-          console.log(`[Supabase Cloud DB] Saved problem #${problemId} in dsa_submissions as ${status}`);
-        }
+        console.log(`[Supabase Cloud DB] Saved problem #${problemId} ("${title}") as ${status}`);
       } catch (err) {
         console.error("Supabase dsa_submissions sync error:", err);
       }
@@ -464,22 +466,13 @@ export function AppProvider({ children }) {
   const syncProjectMilestoneToSupabase = async (projectId, dayNum, isDone) => {
     if (supabase && user) {
       try {
-        const { error: err1 } = await supabase.from("project_milestones").upsert({
+        await supabase.from("project_milestones").upsert({
           user_id: user.id,
           project_id: projectId,
           day_number: dayNum,
           completed: isDone,
           updated_at: new Date().toISOString()
-        }, { onConflict: "user_id,project_id,day_number" });
-
-        if (err1 && (err1.code === "42P01" || err1.message?.includes("does not exist"))) {
-          await supabase.from("projects").upsert({
-            user_id: user.id,
-            project_id: projectId,
-            day_number: dayNum,
-            completed: isDone
-          }, { onConflict: "user_id,project_id,day_number" }).catch(() => {});
-        }
+        }, { onConflict: "user_id,project_id,day_number" }).catch(() => {});
       } catch (err) {
         console.error("Supabase project_milestones sync error:", err);
       }
@@ -489,20 +482,18 @@ export function AppProvider({ children }) {
   const syncDailyNoteToSupabase = async (dayNum, noteContent) => {
     if (supabase && user) {
       try {
-        const { error: err1 } = await supabase.from("daily_notes").upsert({
+        await supabase.from("daily_notes").upsert({
           user_id: user.id,
           day_number: dayNum,
           content: noteContent,
           updated_at: new Date().toISOString()
-        }, { onConflict: "user_id,day_number" });
+        }, { onConflict: "user_id,day_number" }).catch(() => {});
 
-        if (err1 && (err1.code === "42P01" || err1.message?.includes("does not exist"))) {
-          await supabase.from("daily_logs").upsert({
-            user_id: user.id,
-            date: new Date().toISOString().split("T")[0],
-            entry: noteContent
-          }, { onConflict: "user_id,date" }).catch(() => {});
-        }
+        await supabase.from("daily_logs").upsert({
+          user_id: user.id,
+          date: new Date().toISOString().split("T")[0],
+          entry: noteContent
+        }, { onConflict: "user_id,date" }).catch(() => {});
       } catch (err) {
         console.error("Supabase daily_notes sync error:", err);
       }
