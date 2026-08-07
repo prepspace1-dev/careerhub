@@ -24,7 +24,7 @@ DROP POLICY IF EXISTS "Users can manage own project milestones" ON public.projec
 
 -- STEP 2: CREATE CAREERHUB V2 CORE PRODUCTION TABLES
 
--- 1. User Profiles & Preferences
+-- 1. User Profiles & Preferences (Stores XP, Level Rank, Display Name, Streak)
 CREATE TABLE IF NOT EXISTS public.user_profiles (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   current_day INT DEFAULT 1,
   theme_preference TEXT DEFAULT 'dark',
   streak_count INT DEFAULT 0,
+  total_xp INT DEFAULT 0,
   total_study_minutes INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
