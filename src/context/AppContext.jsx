@@ -100,25 +100,33 @@ export function AppProvider({ children }) {
     }
   };
 
-  // --- SUPABASE CLOUD DATA LOAD ---
+  // --- SUPABASE CLOUD DATA LOAD (LOADS ALL USER DATA FROM DB ON LOGIN) ---
   const loadAllUserDataFromSupabase = async (currentUser) => {
     if (!supabase || !currentUser) return;
     const userId = currentUser.id;
 
     try {
-      // 1. Profile
-      const { data: profileData } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .eq("user_id", userId)
-        .maybeSingle();
+      console.log(`[Supabase Cloud DB Sync] Fetching all user tables for user: ${currentUser.email}`);
 
-      let nameToUse = currentUser.user_metadata?.display_name || profileData?.display_name || "";
+      // 1. Ensure user_profiles row exists for foreign key integrity
+      let nameToUse = currentUser.user_metadata?.display_name || "";
       if (!nameToUse && currentUser.email) {
         const namePart = currentUser.email.split("@")[0];
         nameToUse = namePart.charAt(0).toUpperCase() + namePart.slice(1);
       }
       const finalName = nameToUse || "Engineer";
+
+      const { data: profileData } = await supabase
+        .from("user_profiles")
+        .upsert({
+          user_id: userId,
+          email: currentUser.email || "",
+          display_name: finalName,
+          updated_at: new Date().toISOString()
+        }, { onConflict: "user_id" })
+        .select()
+        .maybeSingle();
+
       setUserProfile({ displayName: finalName });
       storageService.saveUserProfile({ displayName: finalName });
 
@@ -127,13 +135,15 @@ export function AppProvider({ children }) {
         storageService.setCurrentDay(profileData.current_day);
       }
 
-      // 2. DSA Submissions
-      const { data: dsaRows } = await supabase
+      // 2. Fetch DSA Submissions from Supabase Cloud DB
+      const { data: dsaRows, error: dsaErr } = await supabase
         .from("dsa_submissions")
         .select("*")
         .eq("user_id", userId);
 
-      if (Array.isArray(dsaRows)) {
+      if (dsaErr) {
+        console.error("[Supabase Error] Fetching dsa_submissions:", dsaErr);
+      } else if (Array.isArray(dsaRows)) {
         const dsaMap = {};
         dsaRows.forEach((row) => {
           dsaMap[row.problem_id] = {
@@ -142,17 +152,20 @@ export function AppProvider({ children }) {
             bookmarked: !!row.bookmarked
           };
         });
+        console.log(`[Supabase Cloud DB] Loaded ${dsaRows.length} DSA submissions from cloud.`);
         setDsaStatus(dsaMap);
         storageService.saveDSAStatus(dsaMap);
       }
 
-      // 3. Daily Progress
-      const { data: progressRows } = await supabase
+      // 3. Fetch Daily Progress & Checklists from Supabase Cloud DB
+      const { data: progressRows, error: progErr } = await supabase
         .from("daily_progress")
         .select("*")
         .eq("user_id", userId);
 
-      if (Array.isArray(progressRows)) {
+      if (progErr) {
+        console.error("[Supabase Error] Fetching daily_progress:", progErr);
+      } else if (Array.isArray(progressRows)) {
         const progressMap = {};
         progressRows.forEach((row) => {
           progressMap[row.day_number] = {
@@ -165,13 +178,15 @@ export function AppProvider({ children }) {
         storageService.saveDayProgress(progressMap);
       }
 
-      // 4. Project Milestones
-      const { data: milestoneRows } = await supabase
+      // 4. Fetch Project Milestones from Supabase Cloud DB
+      const { data: milestoneRows, error: msErr } = await supabase
         .from("project_milestones")
         .select("*")
         .eq("user_id", userId);
 
-      if (Array.isArray(milestoneRows)) {
+      if (msErr) {
+        console.error("[Supabase Error] Fetching project_milestones:", msErr);
+      } else if (Array.isArray(milestoneRows)) {
         const milestoneMap = {};
         milestoneRows.forEach((row) => {
           if (!milestoneMap[row.project_id]) milestoneMap[row.project_id] = {};
@@ -181,13 +196,15 @@ export function AppProvider({ children }) {
         storageService.saveProjectMilestones(milestoneMap);
       }
 
-      // 5. Daily Notes
-      const { data: noteRows } = await supabase
+      // 5. Fetch Daily Notes from Supabase Cloud DB
+      const { data: noteRows, error: noteErr } = await supabase
         .from("daily_notes")
         .select("*")
         .eq("user_id", userId);
 
-      if (Array.isArray(noteRows)) {
+      if (noteErr) {
+        console.error("[Supabase Error] Fetching daily_notes:", noteErr);
+      } else if (Array.isArray(noteRows)) {
         const notesMap = {};
         noteRows.forEach((row) => {
           notesMap[row.day_number] = row.content || "";
@@ -200,7 +217,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Listen to Supabase Auth State
+  // Listen to Supabase Auth State & Sync Data
   useEffect(() => {
     if (!isSupabaseConfigured()) {
       setAuthLoading(false);
@@ -230,7 +247,7 @@ export function AppProvider({ children }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Window Focus Auto-Refetch
+  // Window Focus Auto-Refetch (Guarantees fresh data when switching tabs / mobile / Incognito windows)
   useEffect(() => {
     const handleFocus = () => {
       if (supabase && user) {
@@ -241,7 +258,7 @@ export function AppProvider({ children }) {
     return () => window.removeEventListener("focus", handleFocus);
   }, [user]);
 
-  // Realtime Supabase Database Subscription
+  // Realtime Supabase Database Subscription (Instantly syncs across concurrent tabs/windows)
   useEffect(() => {
     if (!supabase || !user) return;
 
@@ -275,7 +292,7 @@ export function AppProvider({ children }) {
     setAuthLoading(false);
   };
 
-  // Update Display Name
+  // Update Display Name both locally and in Supabase Database + Auth Metadata
   const updateDisplayName = async (name) => {
     const cleanName = name.trim();
     if (!cleanName) return;
@@ -302,7 +319,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Apply Theme
+  // Apply Theme class to document root
   useEffect(() => {
     const root = document.documentElement;
     if (theme === "dark") {
@@ -319,13 +336,13 @@ export function AppProvider({ children }) {
     setThemeState((prev) => (prev === "dark" ? "light" : "dark"));
   };
 
-  // --- TWO-WAY REACTIVE STATE SYNCHRONIZATION WITH CELEBRATIONS ---
+  // --- TWO-WAY REACTIVE STATE SYNCHRONIZATION WITH SUPABASE DATABASE UPSERTS ---
 
   const syncDailyProgressToSupabase = async (dayNum, updatedDayProgressMap) => {
     if (supabase && user) {
       try {
         const dayData = updatedDayProgressMap[dayNum] || { tasks: {}, theoryRead: false, reflection: {} };
-        await supabase.from("daily_progress").upsert({
+        const { error } = await supabase.from("daily_progress").upsert({
           user_id: user.id,
           day_number: dayNum,
           theory_completed: !!dayData.theoryRead,
@@ -333,6 +350,8 @@ export function AppProvider({ children }) {
           reflection: dayData.reflection || {},
           updated_at: new Date().toISOString()
         }, { onConflict: "user_id,day_number" });
+
+        if (error) console.error("[Supabase Error] daily_progress upsert failed:", error);
       } catch (err) {
         console.error("Supabase daily_progress sync error:", err);
       }
@@ -345,7 +364,15 @@ export function AppProvider({ children }) {
         const prob = dsaProblems.find((p) => p.id === problemId);
         const leetcodeId = prob ? prob.leetcodeId : problemId;
 
-        await supabase.from("dsa_submissions").upsert({
+        // Ensure user_profiles row exists
+        await supabase.from("user_profiles").upsert({
+          user_id: user.id,
+          email: user.email || "",
+          display_name: userProfile?.displayName || "Engineer",
+          updated_at: new Date().toISOString()
+        }, { onConflict: "user_id" });
+
+        const { error } = await supabase.from("dsa_submissions").upsert({
           user_id: user.id,
           problem_id: problemId,
           leetcode_id: leetcodeId,
@@ -354,6 +381,12 @@ export function AppProvider({ children }) {
           bookmarked: !!extra?.bookmarked,
           updated_at: new Date().toISOString()
         }, { onConflict: "user_id,problem_id" });
+
+        if (error) {
+          console.error("[Supabase Error] dsa_submissions upsert failed:", error);
+        } else {
+          console.log(`[Supabase Cloud DB] Saved problem #${problemId} as ${status} for ${user.email}`);
+        }
       } catch (err) {
         console.error("Supabase dsa_submissions sync error:", err);
       }
@@ -363,13 +396,15 @@ export function AppProvider({ children }) {
   const syncProjectMilestoneToSupabase = async (projectId, dayNum, isDone) => {
     if (supabase && user) {
       try {
-        await supabase.from("project_milestones").upsert({
+        const { error } = await supabase.from("project_milestones").upsert({
           user_id: user.id,
           project_id: projectId,
           day_number: dayNum,
           completed: isDone,
           updated_at: new Date().toISOString()
         }, { onConflict: "user_id,project_id,day_number" });
+
+        if (error) console.error("[Supabase Error] project_milestones upsert failed:", error);
       } catch (err) {
         console.error("Supabase project_milestones sync error:", err);
       }
@@ -379,12 +414,14 @@ export function AppProvider({ children }) {
   const syncDailyNoteToSupabase = async (dayNum, noteContent) => {
     if (supabase && user) {
       try {
-        await supabase.from("daily_notes").upsert({
+        const { error } = await supabase.from("daily_notes").upsert({
           user_id: user.id,
           day_number: dayNum,
           content: noteContent,
           updated_at: new Date().toISOString()
         }, { onConflict: "user_id,day_number" });
+
+        if (error) console.error("[Supabase Error] daily_notes upsert failed:", error);
       } catch (err) {
         console.error("Supabase daily_notes sync error:", err);
       }
